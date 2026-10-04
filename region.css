@@ -1,0 +1,11 @@
+.region-controls{margin:14px 0;padding:12px;border:1px solid var(--line,#344957);border-radius:12px;background:var(--field,rgba(120,150,160,.055));min-width:0}
+.region-heading,.region-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.region-heading h4{font-size:13px;margin:0}.region-state{font-size:11px;color:var(--muted,#a9bec9)}
+.region-toolbar{margin-top:10px;align-items:flex-end}.region-toolbar label{flex:1;min-width:0}.region-tool{white-space:nowrap;min-height:36px}.region-numbers{margin-bottom:10px}
+.region-controls[data-active=true]{border-color:var(--accent,#34bca9);box-shadow:0 0 0 1px var(--accent,#34bca9)}
+.region-controls .region-tool[aria-pressed=true]{background:var(--accent,#34bca9);color:var(--on-accent,#062b26)}
+.region-controls .hint{font-size:11px;line-height:1.6;margin:10px 0 0}.region-controls .region-scope{opacity:.8}.region-controls input:disabled,.region-controls select:disabled{opacity:.5}
+.region-affine-heading{font-size:13px;margin:14px 0 10px;color:var(--text)}
+.region-outside{margin:14px 0;padding:12px;border:1px solid var(--line,#344957);border-left:3px solid var(--accent,#34bca9);border-radius:10px;background:var(--field);min-width:0}
+.region-outside[hidden]{display:none}.region-outside .hint{font-size:11px;line-height:1.6;margin:0 0 10px}.region-outside .region-heading{align-items:center}.region-outside .region-reset-outside{font-size:11px;min-height:30px;padding:5px 9px}.region-outside input:disabled{opacity:.5}
+.region-edge-options[hidden]{display:none}.region-edge-options .control-grid{margin-top:12px}.region-edge-options label{line-height:1.55}.region-edge-options .region-edge-left{border-top:2px solid #219da6;padding-top:7px}.region-edge-options .region-edge-right{border-top:2px solid #c87928;padding-top:7px}.region-edge-options .region-edge-pixels{font-variant-numeric:tabular-nums;color:var(--text);margin-top:10px}.region-controls[data-mode=edge] .region-toolbar{justify-content:stretch}.region-controls[data-mode=edge] .region-tool{width:100%}

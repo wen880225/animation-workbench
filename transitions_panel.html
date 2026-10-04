@@ -1,0 +1,80 @@
+<section id="transitionPanel" class="workspace-panel transitions-panel" role="tabpanel" aria-labelledby="tabTransitions" hidden>
+  <div class="stage-column">
+    <div class="tr-modebar">
+      <div class="tr-stage-heading"><h2 id="trStageTitle">安排動畫順序</h2><span id="trProjectState" class="hint" role="status">先建立表情組</span></div>
+      <div class="tr-modes" hidden><button id="trCheckMode" aria-pressed="true">銜接檢查</button><button id="trOutputMode" aria-pressed="false">成品切換</button></div>
+      <label class="tr-layout-choice">版面 <select id="trLayout" aria-label="預覽版面"><option value="auto">自動適應</option><option value="portrait">直式</option><option value="landscape">橫式</option></select></label>
+    </div>
+    <div id="trStageGuide" class="tr-stage-guide"><p id="trStageHint">加入已去背的動畫，再用 ↑／↓ 決定播放順序。</p><button id="trStageAction" class="primary">建立表情組</button></div>
+    <div id="trCheckArea" class="tr-workarea">
+      <div id="trPairSelectors" class="canvas-toolbar tr-pair-selectors">
+        <label>上一段 A <select id="trA" aria-label="來源動畫 A"></select></label><button id="trSwap" class="quiet" title="交換前後動畫">⇄ 交換</button>
+        <label>下一段 B <select id="trB" aria-label="接續動畫 B"></select></label><button id="trCompare" class="quiet">更新比對</button>
+      </div>
+      <div class="source-labels tr-canvas-labels"><span id="trLeftLabel">A · 上一段結尾</span><span id="trRightLabel">B · 下一段開頭</span></div>
+      <div id="trCompareViewport" class="tr-viewport"><canvas id="trCompareCanvas" aria-label="A 尾幀與 B 首幀比較，可拖曳分隔線"></canvas><span id="trCompareEmpty" class="empty">先加入已去背的動畫。</span><span id="trCompareStatus" class="tr-preview-status" role="status" hidden></span></div>
+      <div class="view-controls">
+        <label>比對 <select id="trCompareMode"><option value="wipe">拖曳比對</option><option value="onion">半透明疊圖（混合顯示）</option><option value="contour">輪廓差異（紅 A／青 B）</option><option value="diff">差異 ×4</option></select></label>
+        <label>縮放 <select id="trZoom"><option value="fit">符合視窗</option><option value="1">100%</option><option value="2">200%</option></select></label>
+        <label>底色 <select id="trBackdrop"><option value="#000000">純黑</option><option value="#ffffff">純白</option><option value="#666666">灰色</option></select></label>
+        <label class="split-range">分隔線 <input id="trSplit" type="range" min="0" max="100" value="50" aria-label="銜接比對分隔線"></label>
+      </div>
+      <div class="tr-bottom-tools"><details class="tr-canvas-help"><summary>怎麼看比對結果？</summary><p id="trCompareLegend" class="hint">拖曳分隔線，查看兩張圖片的差異。</p></details>
+      <div id="trSeamTransport" class="tr-seam-controls transport"><button id="trReplayPreview" class="quiet" disabled>重播接點</button><button id="trStopPreview" class="quiet" disabled>停止</button><details class="tr-play-settings"><summary>播放設定</summary><div class="transport"><label>各取 <input id="trSpan" type="number" min="1" max="12" value="6"> 幀</label><label>速度 <select id="trPreviewSpeed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option><option value="2">2×</option></select></label><button id="trPreparePreview" class="quiet">依設定播放</button></div></details></div>
+      </div>
+    </div>
+    <div id="trOutputArea" class="tr-workarea" hidden>
+      <div class="canvas-toolbar"><label>成品版本 <select id="trVersion"></select></label><button id="trLoadOutput" class="primary">載入成品</button><button id="trOpenVersion" class="quiet">開啟資料夾</button></div>
+      <p id="trOutputInfo" class="hint">先輸出新版，再載入檢查。</p><p id="trOutputSequence" class="tr-sequence-chain" aria-label="成品播放順序"></p>
+      <div id="trOutputViewport" class="tr-viewport tr-output-viewport"><canvas id="trOutputCanvas" aria-label="已輸出動畫表情切換預覽"></canvas><span id="trOutputEmpty" class="empty">還沒有載入成品。請先輸出，再按「載入成品」。</span></div>
+      <div id="trEmotionButtons" class="tr-emotion-buttons" role="group" aria-label="下一個表情"></div>
+      <div class="transport"><button id="trOutputPlay" class="primary" disabled>播放／暫停</button><button id="trOutputRestart" class="quiet" disabled>從首幀播放</button><label>速度 <select id="trOutputSpeed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><label>播放 <select id="trPlaybackMode"><option value="sequence">依順序循環</option><option value="single">重複目前片段</option></select></label></div>
+      <div class="tr-playback-state"><strong id="trNow">目前：—</strong><span id="trQueued">下一段：—</span></div><progress id="trLoadProgress" value="0" max="1" aria-label="PNG 預載進度" hidden></progress>
+    </div>
+    <p id="trMessage" class="canvas-message" role="status"></p>
+  </div>
+  <aside class="inspector tr-inspector" aria-label="多段動畫四步驟">
+    <div class="tr-sticky-actions"><div class="buttons"><button id="trSave" class="quiet" disabled>儲存方案 <kbd>Ctrl+S</kbd></button><button id="trUndo" class="quiet" disabled>復原</button></div>
+      <nav class="tr-step-nav" aria-label="多段動畫工作步驟"><button id="trStepSources" data-tr-step="sources" aria-current="step"><span>1</span>素材與順序</button><button id="trStepTone" data-tr-step="tone"><span>2</span>統一明暗</button><button id="trStepSeams" data-tr-step="seams"><span>3</span>修好接點</button><button id="trStepOutput" data-tr-step="output"><span>4</span>預覽與輸出</button></nav>
+      <button id="trAppliedAdvanced" class="tr-applied-settings" hidden>查看已套用的進階調整</button>
+    </div>
+    <section id="trStepPanelSources" class="tr-step-panel" data-tr-step-panel="sources" aria-labelledby="trStepSources">
+      <div class="tr-step-intro"><span class="tr-step-number">步驟 1／4</span><h2>素材與順序</h2><p class="hint">加入素材，排成你要的循環。</p></div>
+      <details id="trProjectManage" class="tr-secondary"><summary>表情組：開啟或新增</summary><label for="trProjectSelect">開啟表情組</label><select id="trProjectSelect"><option value="">選擇表情組</option></select><div class="tr-inline"><input id="trNewName" maxlength="100" placeholder="例如：站姿表情循環" aria-label="新的表情組名稱"><button id="trCreate" class="primary">新增</button></div></details>
+      <section id="trSourceSection" class="control-section"><label for="trSource">選擇已去背的動畫</label><select id="trSource"></select><div class="buttons"><button id="trAddSource" class="primary" disabled>加入這段動畫</button><button id="trRefreshSources" class="quiet">更新來源</button></div><h3 class="tr-subheading">播放順序</h3><p class="hint">用 ↑／↓ 排序；最後一段會接回第一段。</p><p id="trSequenceChain" class="tr-sequence-chain"></p><button id="trResetSequence" class="quiet" hidden>改成每段一次循環</button><div id="trClipList" class="tr-clip-list"></div></section>
+      <details class="tr-secondary"><summary>素材規格與儲存方式</summary><p id="trDimensions" class="hint">每段須使用相同畫布，播放速度可以不同。</p><p class="hint">排序、改名與移除只改方案；輸出會另存新版。</p></details>
+    </section>
+    <section id="trStepPanelTone" class="tr-step-panel" data-tr-step-panel="tone" aria-labelledby="trStepTone" hidden>
+      <div class="tr-step-intro"><span class="tr-step-number">步驟 2／4</span><h2>統一明暗</h2><p class="hint">減少切換時忽明忽暗；原本一致就直接下一步。</p></div>
+      <section id="trGroupToneSection" class="control-section"><label for="trToneReference">以哪一段的明暗為準？</label><select id="trToneReference"></select><button id="trMatchTone" class="primary tr-main-action" disabled>統一整組明暗</button><p id="trToneMatchStatus" class="hint" role="status">尚未調整。</p><details id="trToneResults" hidden><summary id="trToneResultsSummary">各段調整結果</summary><p class="hint">誤差越低，明暗越接近基準。</p><div id="trToneResultRows" class="tr-tone-result-rows"></div></details>
+      <details id="trManualTone" class="tr-secondary"><summary>自行調亮、調暗 <span id="trManualToneBadge" class="tr-inline-badge"></span></summary><div class="control-grid"><label>整組明暗<input id="trGroupTone" type="number" min="-100" max="100" value="0"></label><label>整組對比<input id="trGroupContrast" type="number" min="-50" max="50" value="0"></label></div><div class="buttons"><button id="trResetGroupTone" class="quiet" disabled>重設微調</button><button id="trClearToneMatch" class="quiet" disabled>清除自動調整</button></div><p class="hint">只改明暗，透明度保持原樣。</p></details></section>
+    </section>
+    <section id="trStepPanelSeams" class="tr-step-panel" data-tr-step-panel="seams" aria-labelledby="trStepSeams" hidden>
+      <div class="tr-step-intro"><span class="tr-step-number">步驟 3／4</span><h2>修好接點</h2><p class="hint">先建立共同畫面，再慢播檢查切換。</p></div>
+      <section id="trSeamClosureSection" class="control-section tr-seam-closure-card"><h3>讓前後兩段接上</h3><button id="trBuildSeams" class="primary tr-main-action" disabled>建立全部共用接點</button><p id="trSeamClosureStatus" class="hint" role="status">尚未建立。先完成明暗與順序，再按上方按鈕。</p><label class="check-label"><input id="trSeamEnabled" type="checkbox" disabled> 套用共用接點</label><details class="tr-secondary"><summary>每個接點要以哪張圖為準？</summary><div id="trSeamReferenceList" class="tr-seam-reference-list"></div><button id="trClearSeams" class="quiet" disabled>清除全部共用接點</button><p class="hint">預設用下一段的首幀；更換後需重新建立。</p></details></section>
+      <section id="trSequenceSection" class="control-section"><h3>選一個接點檢查</h3><div id="trSequenceSeams" class="tr-sequence-seams"></div><button id="trSeamSlowPlay" class="primary tr-main-action" disabled>0.1× 慢播這個接點</button></section>
+      <section id="trEditSection" class="control-section"><h3>調整過渡長度</h3><label for="trEditSide">調整哪一段？</label><select id="trEditSide"><option value="tail">A：上一段動畫</option><option value="head">B：下一段動畫</option></select><p id="trEditLabel" class="tr-editing-label">尚未選擇動畫</p><div class="control-grid"><label><span id="trHeadFramesLabel">開頭過渡幀數</span><input id="trHeadFrames" type="number" min="0" max="120" value="1"></label><label><span id="trTailFramesLabel">結尾過渡幀數</span><input id="trTailFrames" type="number" min="0" max="120" value="1"></label></div><p class="hint">過渡越長，變化越慢；共用接點每端至少 2 幀。</p></section>
+      <details id="trAdvancedSettings" class="tr-advanced-settings"><summary>進階微調 <span id="trAdvancedBadge" class="tr-inline-badge">未套用</span></summary><p class="hint">只有需要改位置、形狀或單段明暗時再使用。</p><details class="tr-secondary"><summary>裁切這段動畫的保留範圍</summary><div class="control-grid"><label>保留起幀<input id="trStart" type="number" min="1" value="1"></label><label>保留尾幀<input id="trEnd" type="number" min="2" value="2"></label></div><p class="hint">會影響整段動畫，並使舊共用接點失效。</p></details>
+<section id="trAlignmentCard" class="alignment-card"><h3>自動局部對位</h3><p id="trAlignDirection" class="alignment-direction">A 尾幀 → B 首幀</p><button id="trAlign" class="primary" disabled>自動對齊參考幀</button><label class="check-label"><input id="trAlignEnabled" type="checkbox" disabled> 啟用局部對位</label><label class="alignment-strength" for="trAlignStrength">修正強度 <output id="trAlignStrengthValue">100%</output></label><input id="trAlignStrength" type="range" min="0" max="100" step="1" value="100" disabled><button id="trAlignClear" class="quiet" disabled>清除對位</button><p id="trAlignStatus" class="hint" role="status">選擇 A／B 動畫與要修整的一端。</p><p id="trAlignReport" class="hint alignment-report"></p><p class="hint">沿用目前頭／尾段漸進幀數；這一端的局部對位會用於所有銜接。</p><p id="trManualNotice" class="hint alignment-active-note" hidden>使用局部對位；停用後可使用手動變形。原本手動數值會保留。</p></section>
+      <fieldset id="trManualTransform" class="manual-transform"><div id="trRegionControls"></div>
+      <details id="trTransformDetails"><summary id="trTransformHeading">位移、縮放與旋轉</summary>
+        <div class="control-grid"><label>左右（px）<input id="trDx" type="number" min="-100" max="100" step="0.1" value="0"></label><label>上下（px）<input id="trDy" type="number" min="-100" max="100" step="0.1" value="0"></label><label>寬度（%）<input id="trSx" type="number" min="80" max="120" step="0.1" value="100"></label><label>高度（%）<input id="trSy" type="number" min="80" max="120" step="0.1" value="100"></label><label>旋轉（°）<input id="trAngle" type="number" min="-10" max="10" step="0.1" value="0"></label><label>中心 X（%）<input id="trCx" type="number" min="0" max="100" value="50"></label><label>中心 Y（%）<input id="trCy" type="number" min="0" max="100" value="50"></label></div>
+      </details>
+      <div id="trOutsideControls"></div><button id="trResetTransform" class="quiet">重設這一端</button></fieldset>
+      <details><summary>此動畫整段明暗</summary><div class="control-grid"><label>中間調明暗<input id="trTone" type="number" min="-100" max="100" value="0"></label><label>對比<input id="trContrast" type="number" min="-50" max="50" value="0"></label></div><p class="hint">明暗與對比會同時影響這個表情的頭段及尾段。</p></details>
+<details id="trMatrixSection" class="control-section"><summary>進階：所有銜接方向</summary>
+      <h3>所有銜接方向</h3><p class="hint">列為 A 尾，欄為 B 頭；包含每個表情自身循環。</p><button id="trAnalyze" class="quiet" disabled>分析所有方向</button>
+      <div id="trMatrix" class="tr-matrix" aria-label="所有動畫銜接方向"></div><p class="hint">✓ 已人工確認　! 需修整　○ 待確認<br>修改動畫後，相關確認會失效。</p>
+    </details>
+        <details class="tr-secondary"><summary>分析數字與人工檢查記錄</summary><button id="trAnalyzeSequence" class="quiet" disabled>分析循環接點</button><p id="trMetrics" class="hint">數字僅供參考，請播放確認。</p><div class="tr-review-actions"><span id="trReviewState" class="hint">尚未檢查</span><button id="trPass" class="quiet" disabled>確認此接點可用</button><button id="trNeedsWork" class="quiet" disabled>標為需修整</button></div><label class="tr-note-label">備註 <input id="trReviewNote" maxlength="500" placeholder="記下還想調整的地方"></label></details>
+      </details>
+    </section>
+    <section id="trStepPanelOutput" class="tr-step-panel" data-tr-step-panel="output" aria-labelledby="trStepOutput" hidden>
+      <div class="tr-step-intro"><span class="tr-step-number">步驟 4／4</span><h2>預覽與輸出</h2><p class="hint">先輸出新版，再在左側載入實際成品。</p></div>
+      <section id="trExportSection" class="control-section"><button id="trExport" class="primary tr-main-action" disabled>輸出整組動畫</button><p id="trExportState" class="hint" role="status">至少加入兩段動畫。</p><progress id="trExportProgress" value="0" max="1" hidden aria-label="整組輸出進度"></progress><p class="hint">另存透明 PNG 與 WebM，原素材保持不變。</p></section>
+      <details id="trOutputSeamReport" class="tr-output-seam-report" hidden><summary id="trOutputSeamSummary">成品接點驗證</summary><div id="trOutputSeamRows"></div></details>
+      <details class="tr-secondary"><summary>進階播放選項</summary><label class="check-label"><input id="trRandom" type="checkbox"> 隨機下一段</label><label class="check-label tr-skip-label"><input id="trSkipSeam" type="checkbox" disabled> 跳過重複接點幀</label><p id="trSkipSeamHint" class="hint">只略過已確認相同的接點；原檔幀數不變。</p></details>
+    </section>
+    <div class="tr-step-footer"><button id="trStepBack" class="quiet" hidden>上一步</button><button id="trStepNext" class="primary">下一步：統一明暗 →</button></div>
+  </aside>
+</section>

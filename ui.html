@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>動畫去背工作台</title>
+  <link rel="stylesheet" href="/workspace.css?v=39">
+  <link rel="stylesheet" href="/transitions.css?v=39">
+  <link rel="stylesheet" href="/region.css?v=39">
+  <link rel="stylesheet" href="/beginner.css?v=39-preview-1">
+</head>
+<body>
+<div class="app-shell">
+  <header class="app-header">
+    <button id="openImport" class="primary import-entry" aria-haspopup="dialog" aria-controls="taskDrawer"><span aria-hidden="true">＋</span> 匯入影片</button>
+    <button id="openTasks" class="quiet" aria-haspopup="dialog" aria-controls="taskDrawer">任務隊列 <span id="queueBadge" class="queue-badge">0</span></button>
+    <div class="document-heading"><h1 id="title">動畫去背工作台</h1><p id="documentMeta" class="hint">透明動畫 · 固定畫布 · 無音軌</p></div>
+    <span id="documentState" class="state-badge">尚未選擇素材</span>
+    <div class="header-actions compact-actions">
+      <button id="openGuide" class="quiet" aria-haspopup="dialog" aria-controls="guideDialog">使用指南</button>
+      <button id="openTheme" class="quiet" aria-haspopup="dialog" aria-controls="themeDialog">顯示設定</button>
+      <button id="openResults" class="quiet" aria-haspopup="dialog" aria-controls="resultsDialog">結果與版本</button>
+      <button id="prepareExport" class="primary" aria-haspopup="dialog" aria-controls="exportDialog">輸出目前修整</button>
+    </div>
+  </header>
+  <div id="review" class="review-banner notice" role="status" hidden>
+    <div><strong>試跑已完成</strong><span>檢查畫面與循環後，即可繼續處理整段動畫。</span></div>
+    <button id="approve" class="primary">確認效果，處理全部</button>
+  </div>
+  <nav class="workspace-nav" aria-label="工作模式">
+    <div class="work-tabs" role="tablist" aria-label="工作區">
+      <button id="tabPlayback" role="tab" aria-controls="playbackPanel" aria-selected="true">播放檢查</button>
+      <button id="tabFrames" role="tab" aria-controls="framesPanel" aria-selected="false" tabindex="-1">逐幀檢查</button>
+      <button id="tabEdit" role="tab" aria-controls="loopEditor" aria-selected="false" tabindex="-1">單段修整</button>
+      <button id="tabTransitions" role="tab" aria-controls="transitionPanel" aria-selected="false" tabindex="-1">多段銜接</button>
+    </div>
+    <div class="nav-actions"><span id="leDraftState" class="hint" role="status">修整草稿依素材保留</span>
+    <button id="focusCanvas" class="quiet" aria-pressed="false">專注檢查</button></div>
+  </nav>
+  <main class="workspace">
+    <section id="playbackPanel" class="workspace-panel" role="tabpanel" aria-labelledby="tabPlayback">
+      <div class="stage-column">
+        <div class="stage-heading"><div><span class="eyebrow">檢查成品</span><h2>先看看動畫播起來如何</h2></div><button class="text-action" data-guide="playback">怎麼檢查？</button></div>
+        <section id="welcomePanel" class="welcome-sheet" hidden>
+          <span class="eyebrow">從第一支影片開始</span><h2>把影片做成<br>可用的遊戲動畫。</h2><p>先去背，再修整，最後輸出透明素材。</p>
+          <div class="welcome-route"><div><b>01</b><strong>匯入與去背</strong></div><span aria-hidden="true">→</span><div><b>02</b><strong>檢查與修整</strong></div><span aria-hidden="true">→</span><div><b>03</b><strong>預覽與輸出</strong></div></div>
+          <div class="buttons"><button id="welcomeImport" class="primary">＋ 匯入第一支影片</button><button id="welcomeTasks">開啟已有素材</button></div><button class="text-action" data-guide="start">第一次使用？看快速指南</button>
+        </section>
+        <div class="canvas-toolbar">
+          <label for="videoChoice">播放版本</label><select id="videoChoice"><option value="full">原始去背 · 完整結果</option><option value="preview">原始去背 · 試跑片段</option></select>
+          <p id="videoInfo" class="hint">完成試跑或合成後，即可在這裡檢查。</p>
+        </div>
+        <div id="videoStage" class="player backdrop">
+          <video id="video" muted loop controls playsinline aria-label="透明動畫預覽"></video>
+          <div id="bgDragLayer" class="bg-drag-layer" hidden></div><span id="videoEmpty" class="empty">尚無預覽影片</span>
+        </div>
+        <div class="transport">
+          <button id="play" class="primary">播放／暫停</button><button id="restart" class="quiet">從頭播放</button>
+          <label for="speed">速度</label><select id="speed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select>
+          <label class="check-label"><input id="loop" type="checkbox" checked> 自動重播</label><span class="hint">確認首尾銜接，也可提高速度檢查。</span>
+        </div>
+      </div>
+      <aside class="inspector" aria-label="播放預覽設定">
+        <div class="inspector-title"><h2>預覽設定</h2><span class="safe-badge">不寫入成品</span></div>
+        <section class="control-section">
+          <h3>檢查背景</h3><label for="bg">檢查底色</label>
+          <select id="bg"><option value="check">棋盤格</option><option value="#fff">純白</option><option value="#000" selected>純黑</option><option value="#00ff00">純綠</option><option value="#697786">灰藍</option></select>
+          <label for="bgfile">套用遊戲背景</label><input id="bgfile" type="file" accept="image/*">
+          <p class="hint">用實際遊戲場景檢查融合感。切換底色可清除參考背景。</p>
+          <div id="backgroundControls" hidden>
+            <label for="bgScale">背景縮放 <output id="bgScaleValue">100%</output></label><input id="bgScale" type="range" min="20" max="300" value="100">
+            <div class="control-grid"><label>左右位移（px）<input id="bgX" type="number" value="0" step="10"></label><label>上下位移（px）<input id="bgY" type="number" value="0" step="10"></label></div>
+            <label class="check-label"><input id="dragBackground" type="checkbox"> 在畫布上拖曳背景</label><button id="resetBackground" class="quiet">背景置中／重設</button>
+            <p class="hint">100% 為完整顯示背景。拖曳時會暫停操作影片控制列。</p>
+          </div>
+        </section>
+        <details class="control-section"><summary>自訂預覽尺寸</summary>
+          <label for="previewWidth">寬度</label><input id="previewWidth" type="range" min="280" max="1600" value="640">
+          <label for="previewHeight">高度</label><input id="previewHeight" type="range" min="180" max="1000" value="400">
+          <button id="resetPreview" class="quiet">恢復自適應視窗</button><p class="hint">只改檢查區大小，輸出解析度維持不變。</p>
+        </details>
+        <p class="hint inspector-note">預覽以瀏覽器的透明合成為準。外部播放器若忽略 Alpha，可能顯示不正確的底色。</p>
+      </aside>
+    </section>
+
+    <section id="framesPanel" class="workspace-panel" role="tabpanel" aria-labelledby="tabFrames" hidden>
+      <div class="stage-column frames-column">
+        <div id="frameInspector" class="frame-inspector">
+          <div class="canvas-toolbar">
+            <label for="compareMode">比對方式</label><select id="compareMode"><option value="wipe">拖曳比對</option><option value="side">左右並排</option></select>
+            <label for="imageZoom">縮放</label><select id="imageZoom"><option value="fit">符合視窗</option><option value="0.5">50%</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select><button id="frameFullscreen" class="quiet">全螢幕</button>
+          </div>
+          <div id="compareViewport" class="compare-viewport">
+            <div class="compare-caption"><span>左 · 原始幀</span><span>右 · 透明 PNG</span></div>
+            <div id="compareCanvas" class="compare-canvas backdrop">
+              <img id="compareResult" alt="去背結果"><div class="compare-before"><img id="compareOriginal" alt="原始影格"></div><div class="compare-divider"></div>
+              <button id="compareHandle" class="compare-handle" role="slider" aria-label="拖曳比對分隔線" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">↔</button><span id="compareEmpty" class="compare-note" hidden>此幀尚未完成</span>
+            </div>
+          </div>
+          <div id="sideViewer" class="viewer" hidden>
+            <div class="still-column"><p>原始幀</p><div class="still"><img id="original" alt="原始影格"><span id="originalEmpty" class="empty">尚無圖片</span></div></div>
+            <div class="still-column"><p id="frameLabel">透明 PNG</p><div class="still backdrop"><img id="result" alt="透明 PNG 結果"><span id="resultEmpty" class="empty">此幀尚未完成</span></div></div>
+          </div>
+          <div id="compareTools" class="compare-tools view-controls"><label for="compareSplit">分隔線</label><input id="compareSplit" type="range" min="0" max="100" value="50"><button id="compareCenter" class="quiet">置中</button><span class="hint">雙擊切換放大 · 放大後可捲動檢查</span></div>
+        </div>
+        <div class="filmstrip">
+          <div class="timeline-header"><button id="prevPage" class="quiet">← 前 12 幀</button><span id="pageInfo" class="hint"></span><button id="nextPage" class="quiet">後 12 幀 →</button><label for="jump">跳到第</label><input id="jump" type="number" min="1" value="1"><button id="jumpGo" class="quiet">查看</button></div>
+          <div id="cards" class="cards" aria-label="影格縮圖"></div><input id="scrub" type="range" min="1" max="1" value="1" aria-label="逐幀時間軸">
+          <div class="transport"><button id="prevFrame" class="quiet">← 上一幀</button><button id="nextFrame" class="quiet">下一幀 →</button><p id="warnings" class="hint" role="status"></p></div>
+        </div>
+      </div>
+      <aside class="inspector" aria-label="逐幀檢查設定">
+        <div class="inspector-title"><h2>影格檢查</h2><span class="safe-badge">原圖／去背結果</span></div>
+        <section class="control-section"><h3>畫面顯示</h3><label for="frameBackdrop">檢查底色</label><select id="frameBackdrop"><option value="check">棋盤格</option><option value="#000" selected>純黑</option><option value="#fff">純白</option><option value="#00ff00">純綠</option><option value="#697786">灰藍</option></select><button id="fitFrames" class="quiet">完整顯示圖片</button><p class="hint">深色底方便檢查灰階角色的白邊。檢查底色不會寫入輸出。</p></section>
+        <section class="control-section"><h3>重新去背</h3><p class="hint">這一幀的去背結果不理想時，可單獨重跑。</p><button id="retry" class="quiet">重跑目前這一幀</button></section>
+        <details class="control-section"><summary>自訂檢查高度</summary><label for="stillHeight">預覽高度</label><input id="stillHeight" type="range" min="180" max="900" value="440"><p class="hint">只影響檢查畫面，圖片大小保持不變。</p></details>
+      </aside>
+    </section>
+
+    <section id="loopEditor" class="workspace-panel" role="tabpanel" aria-labelledby="tabEdit" hidden>
+      <div class="stage-column editor-preview">
+        <div class="stage-heading"><div><span class="eyebrow">目前草稿</span><h2 id="singleStageTitle">調整這段動畫的明暗</h2></div><button class="text-action" data-guide="single">操作說明</button></div>
+        <div class="canvas-toolbar"><label for="lePurpose">比較用途</label><select id="lePurpose"><option value="tone">調整前後</option><option value="loop">首尾銜接</option><option value="reference">參考圖與目前幀</option></select><label for="leMode">比對方式</label><select id="leMode"><option value="wipe">拖曳比對</option><option value="onion">半透明疊圖（混合顯示）</option><option value="contour">輪廓差異（紅 A／青 B）</option><option value="diff">差異 ×4</option></select><button id="lePreview" class="quiet">更新比對</button></div>
+        <div class="source-labels"><span id="leSourceA">左側 · 等待載入</span><span id="leSourceB">右側 · 等待載入</span></div>
+        <details class="preview-meta"><summary>畫面來源與比對說明</summary><p id="lePreviewSnapshot" class="preview-snapshot">畫面來源：尚無成功預覽</p><p id="leModeHint" class="comparison-mode-hint">左側 A、右側 B；拖曳分隔線查看各自的實際畫面。</p></details>
+        <div class="editor-canvas-shell"><div id="leViewport" class="canvas-viewport"><canvas id="leCanvas" aria-label="修整前後比較畫布"></canvas><span id="editorEmpty" class="empty" hidden>先選擇已完成去背的素材。</span></div><div id="lePreviewBadge" class="preview-stale-badge" role="status" hidden>舊預覽，尚未套用目前設定</div></div>
+        <div class="view-controls">
+          <label for="leZoom">縮放</label><select id="leZoom"><option value="fit">符合視窗</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select>
+          <label for="leBackdrop">底色</label><select id="leBackdrop"><option value="#000000">純黑</option><option value="#ffffff">純白</option><option value="#666666">灰色</option><option value="#204080">深藍</option></select>
+          <label class="split-range" for="leSplit">分隔線<input id="leSplit" type="range" min="0" max="100" value="50" aria-label="修整比對分隔線"></label><label class="check-label"><input id="leOriginal" type="checkbox"> 暫看原始結果</label>
+        </div>
+        <div class="editor-timeline">
+          <div class="timeline-header"><div id="leAControls" class="inline-controls" hidden><label>A 幀 <input id="leA" type="number" min="1" value="1"></label><button id="leEndpoints" class="quiet">使用首尾幀</button></div><label>B 幀 <input id="leB" type="number" min="1" value="2"></label><span id="leTimelineInfo" class="hint">等待素材</span></div>
+          <div class="timeline-track"><div id="leRampTrack" class="ramp-track" aria-hidden="true"></div><div id="leClosureHeadTrack" class="closure-track closure-head-track" aria-hidden="true" hidden></div><div id="leClosureTailTrack" class="closure-track closure-tail-track" aria-hidden="true" hidden></div><input id="leTimeline" type="range" min="1" max="2" value="2" aria-label="修整時間軸"></div>
+          <div class="transport"><button id="lePrev" class="quiet">← 上一幀</button><button id="leNext" class="quiet">下一幀 →</button><button id="lePlay" class="primary">播放接縫</button><button id="leStop" class="quiet">停止</button><label>各播幾幀 <input id="leSeamN" type="number" min="1" max="24" value="6"></label><label for="leSpeed">速度</label><select id="leSpeed"><option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5" selected>0.5×</option><option value="1">1×</option></select></div>
+          <p id="lePlayback" class="hint"></p><p id="leMessage" class="canvas-message hint" role="status"></p>
+        </div>
+      </div>
+      <aside class="editor-settings inspector" aria-label="明暗與循環修整設定">
+        <div class="single-sticky"><div class="inspector-title"><h2>單段修整</h2><span class="safe-badge">另存新版本</span></div><div id="singleSaveDock" class="single-save-dock"></div><div class="single-switch" aria-label="單段修整項目"><button data-single-mode="tone" aria-pressed="true">明暗與參考</button><button data-single-mode="loop" aria-pressed="false">首尾循環</button></div></div>
+        <div id="singleApplied" class="applied-summary" hidden><span id="singleAppliedText"></span><button id="singleShowApplied" class="text-action">查看設定</button></div>
+        <div id="singleToneGroup">
+        <section class="control-section tone-card"><h3>整段明暗</h3>
+          <div class="range-number"><label for="leTone">中間調明暗</label><input id="leTone" type="number" min="-100" max="100" step="1" value="0"></div><input id="leToneRange" type="range" min="-100" max="100" step="1" value="0" aria-label="中間調明暗">
+          <div class="range-number"><label for="leContrast">對比</label><input id="leContrast" type="number" min="-50" max="50" step="1" value="0"></div><input id="leContrastRange" type="range" min="-50" max="50" step="1" value="0" aria-label="對比">
+          <button id="leToneReset" class="quiet">重設明暗</button><p class="hint">正數調亮，負數調暗。整段套用，透明度保持不變。</p><input id="leToneCompare" type="checkbox" hidden aria-label="同一幀調整前後比對">
+        </section>
+        <div class="buttons"><button id="singleUseReference">用自己的圖片比明暗</button><button id="singleBeforeAfter" class="text-action" hidden>返回調整前後</button></div>
+        <section id="leReferenceControls" class="control-section" hidden><h3>選一張明暗參考圖</h3><label for="leReference">參考圖片</label><input id="leReference" type="file" accept="image/png,image/jpeg,image/webp"><p id="leReferenceName" class="hint">未載入參考圖</p><button id="leReferenceClear" class="quiet">清除參考圖</button><p class="hint">左邊看參考圖，右邊看調整結果。參考圖不會寫入成品。</p></section>
+        </div>
+        <div id="singleLoopGroup" hidden>
+        <section id="leClosureCard" class="control-section closure-card"><h3>讓結尾接回開頭</h3><p class="hint">讓第一張與最後一張使用同一張圖，並漸變銜接。</p><label class="check-label"><input id="leClosureEnabled" type="checkbox"> 使用首尾共同基準</label><label for="leClosureReference">用哪一幀作為接點？</label><input id="leClosureReference" type="number" min="1" step="1" value="1" disabled><div class="control-grid"><label>開頭過渡（幀）<input id="leClosureHead" type="number" min="2" step="1" value="12" disabled></label><label>結尾過渡（幀）<input id="leClosureTail" type="number" min="2" step="1" value="12" disabled></label></div><p id="leClosureStatus" class="hint" role="status">尚未啟用。</p><button id="singleSlowPreview" class="primary">以 0.1× 檢查首尾</button><details class="context-help"><summary>過渡幀數怎麼選？</summary><p>先試每端 6–12 幀。數字越大，修正分攤的時間越長；兩端範圍不能重疊。</p><p>範圍縮短時會自動縮限。首尾相同後，仍要播放確認動作自然。</p></details></section>
+        <div id="singleRangeDock"></div>
+        </div>
+        <details id="singleAdvanced" class="control-section advanced-box"><summary>進階微調 <span id="singleAdvancedBadge" class="setting-badge">未套用</span></summary><p class="hint">需要修正位置或輪廓時，再調整這裡。</p>
+        <section id="leAlignmentCard" class="control-section alignment-card"><h3>自動局部對位</h3><p id="leAlignDirection" class="alignment-direction">尾幀 → 參考 A 幀</p><label for="leAlignReference">參考 A 幀</label><input id="leAlignReference" type="number" min="1" step="1" value="1"><button id="leAlign" class="primary">自動對齊參考幀</button><label class="check-label"><input id="leAlignEnabled" type="checkbox" disabled> 啟用局部對位</label><label class="alignment-strength" for="leAlignStrength">修正強度 <output id="leAlignStrengthValue">100%</output></label><input id="leAlignStrength" type="range" min="0" max="100" step="1" value="100" disabled><button id="leAlignClear" class="quiet" disabled>清除對位</button><p id="leAlignStatus" class="hint" role="status">先選擇參考 A 幀，再自動對齊尾幀。</p><p id="leAlignReport" class="hint alignment-report"></p><p class="hint">從漸進修正起幀逐漸套用，尾幀達到指定強度。明暗仍可獨立調整。</p><p id="leManualNotice" class="hint alignment-active-note" hidden>使用局部對位；停用後可使用手動變形。原本手動數值會保留。</p></section>
+        <details id="leLoopControls" class="control-section" hidden open><summary>循環範圍與接點</summary>
+          <div class="control-grid"><label>循環起幀<input id="leStart" type="number" min="1" value="1"></label><label>循環尾幀<input id="leEnd" type="number" min="2" value="2"></label></div>
+          <label for="leRamp">漸進修正起幀</label><input id="leRamp" type="number" min="1" value="1"><p class="hint">修正從此幀的 0，平滑增加至尾幀設定值。</p>
+          <label for="leWindow">開頭／結尾各搜尋幾幀</label><input id="leWindow" type="number" min="2" max="30" value="12"><button id="leSearch" class="quiet">尋找較佳接點</button><div id="leCandidates" class="buttons"></div>
+          <p class="hint">採用候選會縮短輸出範圍。分數越低越接近，仍需播放確認銜接。</p>
+        </details>
+        <details id="leManualDetails" class="control-section"><summary>位置與變形</summary><fieldset id="leManualTransform" class="manual-transform"><p class="hint">調整尾幀的修正量，畫布解析度保持不變。</p>
+          <div id="leRegionControls"></div><h4 id="leTransformHeading" class="region-affine-heading">整體變形</h4>
+          <div class="control-grid">
+            <label>左右（px）<input id="leDx" type="number" min="-100" max="100" step="0.1" value="0"></label><label>上下（px）<input id="leDy" type="number" min="-100" max="100" step="0.1" value="0"></label>
+            <label>寬度（%）<input id="leSx" type="number" min="80" max="120" step="0.1" value="100"></label><label>高度（%）<input id="leSy" type="number" min="80" max="120" step="0.1" value="100"></label>
+          </div>
+          <label class="check-label"><input id="leLockRatio" type="checkbox"> 連動寬高縮放</label><label for="leAngle">旋轉（°）</label><input id="leAngle" type="number" min="-10" max="10" step="0.1" value="0">
+          <div class="control-grid"><label>變形中心 X（%）<input id="leCx" type="number" min="0" max="100" step="0.1" value="50"></label><label>變形中心 Y（%）<input id="leCy" type="number" min="0" max="100" step="0.1" value="50"></label></div>
+          <button id="lePickCenter" class="quiet" aria-pressed="false">在畫布上選變形中心</button>
+          <div id="leOutsideControls"></div>
+          <details class="legacy-region"><summary>舊版保護圈（相容已有方案）</summary><label class="check-label"><input id="leProtect" type="checkbox"> 固定局部區域</label>
+          <div class="control-grid"><label>保護中心 X（%）<input id="lePx" type="number" min="0" max="100" step="0.1" value="50"></label><label>保護中心 Y（%）<input id="lePy" type="number" min="0" max="100" step="0.1" value="35"></label></div>
+          <label for="leRadius">保護半徑（短邊 %）</label><input id="leRadius" type="number" min="1" max="60" value="15"><button id="lePickProtect" class="quiet" aria-pressed="false">在畫布上選保護中心</button><p class="hint">保護圈內保持原樣，圈外逐漸恢復變形。</p></details></fieldset>
+        </details>
+        </details>
+        <section id="singleRecipeSection" class="control-section"><h3>方案與復原</h3><div class="control-grid"><button id="leUndo" class="quiet">復原上次操作</button><button id="leReset" class="quiet">清除變形</button><button id="leSave" class="primary">儲存方案</button><button id="leLoad" class="quiet">載入方案</button></div></section>
+        <button id="singleExport" class="primary single-export">輸出目前修整</button><p class="hint">儲存方案保留設定；輸出才會產生新的 PNG 與影片。</p>
+      </aside>
+    </section>
+    __TRANSITIONS_PANEL__
+  </main>
+  <footer class="workspace-status">
+    <button id="statusDetails" class="quiet" aria-haspopup="dialog" aria-controls="resultsDialog"><span id="globalStatus">尚未選擇任務</span></button>
+    <progress id="globalProgress" value="0" max="1" aria-label="目前任務進度"></progress><span id="globalEta" class="hint" role="status"></span><span id="queueMini" class="hint" role="status"></span><span id="versionTag" class="hint">動畫去背工作台 v3.9</span>
+  </footer>
+</div>
+
+<dialog id="taskDrawer" class="import-dialog" aria-labelledby="taskDrawerTitle">
+  <div class="dialog-heading"><div><h2 id="taskDrawerTitle">匯入影片與任務隊列</h2><p class="hint">一次加入多支影片，依序去背；完成後點選素材進入工作區。</p></div><button class="quiet" data-close="taskDrawer" aria-label="關閉匯入與任務隊列">關閉</button></div>
+  <div class="import-layout">
+    <section id="importArea" class="import-form" aria-label="匯入影片">
+      <h3>1. 選擇影片</h3>
+      <div id="videoDropzone" class="video-dropzone">
+        <span class="drop-icon" aria-hidden="true">＋</span><strong>把影片拖到這裡</strong><span class="hint">或點下方按鈕，可一次多選</span>
+        <label class="file-pick-button" for="upload">選擇影片…</label><input id="upload" class="accessible-file" type="file" multiple accept=".mp4,.mov,.mkv,.webm,.avi,.m4v,.ogv,.gif" aria-label="選擇多支影片">
+        <span class="hint">MP4 · MOV · MKV · WebM · AVI · M4V · OGV · GIF</span>
+      </div>
+      <div class="pending-heading"><strong id="pendingCount">尚未選擇影片</strong><button id="clearPending" class="quiet" disabled>清空待匯入</button></div>
+      <div id="pendingFiles" class="pending-files" aria-label="待匯入影片"></div>
+      <details class="path-import"><summary>使用電腦上的影片路徑</summary><label for="source">完整影片路徑</label><input id="source" placeholder="貼上完整影片路徑"><div class="buttons"><button id="addSourcePath">加入此路徑</button><button id="probe" class="quiet">讀取影片資訊</button></div><p id="info" class="hint"></p></details>
+      <section class="control-section"><h3>2. 選擇處理方式</h3><label for="queueMode">套用到本次加入的影片</label><select id="queueMode"><option value="full">整段去背（略過試跑）</option><option value="preview">每支先試跑，之後逐一確認</option></select><p id="queueModeHint" class="hint">依序完成每支影片，輸出透明 PNG 圖序與 WebM。</p></section>
+      <details class="control-section"><summary>幀範圍與輸出設定</summary>
+        <label for="fps">輸出 FPS（留白沿用各影片來源）</label><input id="fps" placeholder="沿用來源">
+        <div class="control-grid"><label>起始幀（從 1 起算）<input id="start_frame" type="number" min="1" step="1" value="1"></label><label>處理幀數<input id="frame_count" type="number" min="1" step="1" placeholder="全部剩餘幀"></label></div>
+        <p class="hint">本次影片使用相同設定。幀數以輸出 FPS 計算；留白處理到片尾。</p>
+        <label for="preview_frames">試跑幀數</label><input id="preview_frames" type="number" min="1" max="10000" value="48"><p id="estimate" class="hint">預設連續 48 幀。</p>
+      </details>
+      <details class="control-section"><summary>模型設定與環境檢查</summary>
+        <label for="comfy">ComfyUI 位址</label><input id="comfy" value="http://127.0.0.1:8188"><div class="control-grid"><label>步數<input id="steps" type="number" value="25"></label><label>固定 Seed<input id="seed" value="899063591435756"></label></div>
+        <label for="prompt">去背指令</label><textarea id="prompt">Remove the background, and output a PNG image</textarea><button id="check" class="quiet">檢查環境</button><p id="environment" class="hint" role="status"></p>
+      </details>
+      <div class="import-submit"><button id="enqueueStart" class="primary" disabled>加入隊列並開始</button><button id="enqueueOnly" disabled>僅加入隊列</button><p id="importStatus" class="hint" role="status">選好影片後，即可批次加入。</p></div>
+      <div hidden><button id="createPreview">建立任務，先試跑</button><button id="createDirect">跳過試跑，直接處理</button></div>
+    </section>
+    <section id="queueArea" class="queue-area" aria-label="去背任務隊列">
+      <div class="queue-title"><div><h3>任務隊列</h3><p id="queueSummary" class="hint" role="status">正在讀取隊列…</p></div><span id="queueState" class="safe-badge">準備中</span></div>
+      <div class="buttons queue-actions"><button id="queueStart" class="primary">開始隊列</button><button id="queuePause">暫停隊列</button></div>
+      <p id="queueNotice" class="hint" role="status"></p><div id="queueList" class="queue-list" aria-label="已加入隊列的影片"></div>
+      <details class="control-section history-section" open><summary>已匯入素材與歷史任務</summary><p class="hint">點選素材進入工作區。單項失敗可在隊列中重試。</p><div id="jobs" class="job-list"></div></details>
+    </section>
+  </div>
+</dialog>
+
+<dialog id="resultsDialog" aria-labelledby="resultsTitle">
+  <div class="dialog-heading"><div><h2 id="resultsTitle">結果與版本</h2><p class="hint">成品下載、透明度驗證與任務管理。</p></div><button class="quiet" data-close="resultsDialog">關閉</button></div>
+  <section id="statusPanel">
+    <p id="phase">先啟動 ComfyUI，再選擇影片。</p><progress id="progress" value="0" max="1" aria-label="去背進度"></progress><p id="stats" class="hint"></p><p id="eta" class="hint" role="status"></p><div id="editExportStatus" class="export-status" role="status" hidden></div>
+    <div id="actions" class="buttons" hidden><button id="resume" class="primary">繼續未完成任務</button><button id="pause" class="quiet">暫停</button><button id="direct" class="quiet">跳過試跑，處理全部</button><button id="open" class="quiet">開啟結果資料夾</button><button id="reexport" class="quiet">重新合成 WebM</button><button id="atlas" class="quiet">輸出圖集</button></div>
+    <p id="error" class="error" role="alert"></p><p id="alpha" class="hint"></p>
+    <section class="control-section"><h3>原始去背成品</h3><div id="exports" class="export-list"></div></section>
+    <section class="control-section version-drawer"><h3>修整版本</h3><div id="leVersions" class="version-list"></div></section>
+    <details class="control-section"><summary>技術記錄與其他版本</summary><p class="hint">影片 JSON 記錄 FPS、幀數與尺寸；verification JSON 記錄透明度檢查結果。atlas.json 是圖集的位置資料。</p><div id="exportRecords" class="record-links"></div></details>
+    <details id="adjustPreview" class="control-section" hidden><summary>調整試跑長度</summary><div class="canvas-toolbar"><label for="currentPreview">連續幀數</label><input id="currentPreview" type="number" min="1" value="48"><button id="extend" class="quiet">更新試跑</button></div><p class="hint">沿用已完成的影格。</p></details>
+    <p class="hint">PNG 圖序可匯入 Godot 動畫；Godot 4 播放 WebM 需額外擴充。輸出保留透明度、固定解析度且無音軌。</p>
+  </section>
+</dialog>
+
+<dialog id="exportDialog" aria-labelledby="exportTitle">
+  <div class="dialog-heading"><div><h2 id="exportTitle">輸出修整版本</h2><p class="hint">確認範圍與設定，另存透明 PNG 及 WebM。</p></div><button class="quiet" data-close="exportDialog">關閉</button></div>
+  <dl id="exportSummary" class="export-summary"></dl><div id="leExportStatus" class="export-status" role="status" hidden></div>
+  <p class="hint">原始去背結果不會被覆寫。新版本完成後，可從播放器的版本選單直接回看。</p>
+  <div class="dialog-actions"><button class="quiet" data-close="exportDialog">繼續檢查</button><button id="leExport" class="primary">輸出 PNG ＋透明 WebM</button></div>
+</dialog>
+
+<dialog id="themeDialog" class="theme-dialog" aria-labelledby="themeTitle">
+  <div class="dialog-heading"><div><h2 id="themeTitle">讓介面看得舒服</h2><p class="hint">字體和配色依你的習慣調整。</p></div><button class="quiet" data-close="themeDialog">關閉</button></div>
+  <section class="reading-settings"><h3>文字大小</h3><div class="reading-options"><button data-reading="comfortable" aria-pressed="true">舒適 · 16</button><button data-reading="large" aria-pressed="false">大字 · 18</button></div><p class="hint">只調整介面，素材尺寸不變。</p></section><h3>介面配色</h3>
+  <p id="themeCurrent" class="hint" role="status"></p><div id="themeChoices" class="theme-grid"></div><div class="theme-bottom"><button class="quiet" data-theme="system">跟隨系統</button></div>
+</dialog>
+
+<dialog id="guideDialog" class="guide-dialog" aria-labelledby="guideTitle">
+  <div class="dialog-heading"><div><span class="eyebrow">快速指南</span><h2 id="guideTitle">先選你想完成的事</h2></div><button data-close="guideDialog">關閉</button></div>
+  <div class="guide-choices">
+    <button data-guide-route="import"><b>01</b><span><strong>把影片去背</strong><small>匯入影片 → 加入隊列 → 檢查結果</small></span><span aria-hidden="true">→</span></button>
+    <button data-guide-route="single"><b>02</b><span><strong>修整一段動畫</strong><small>調明暗或修首尾 → 慢播確認 → 輸出</small></span><span aria-hidden="true">→</span></button>
+    <button data-guide-route="multi"><b>03</b><span><strong>串接多段表情</strong><small>排順序 → 統一明暗 → 修接點 → 輸出</small></span><span aria-hidden="true">→</span></button>
+  </div>
+  <section class="guide-context"><h3 id="guideContextTitle">第一次使用</h3><p id="guideContextText">先開啟 ComfyUI，再匯入影片。可以一次選多支，讓任務隊列依序去背。</p></section>
+  <details class="guide-glossary"><summary>幀、接點、過渡，是什麼？</summary><dl><dt>幀</dt><dd>動畫裡的一張圖片。</dd><dt>接點</dt><dd>上一段最後一張，與下一段第一張相接的位置。</dd><dt>過渡</dt><dd>用幾張圖片，把原本的動作逐漸調到接點。</dd><dt>方案／成品</dt><dd>方案保存修整設定；輸出後的 PNG 與影片才是成品。</dd></dl></details>
+</dialog>
+
+<dialog id="leOutputDialog" class="output-check-dialog" aria-labelledby="leOutputTitle"><div class="output-check-header"><h2 id="leOutputTitle">核對輸出首尾</h2><button id="leOutputClose">關閉</button></div><p id="leOutputSource" class="preview-snapshot"></p><p id="leOutputStatus" class="hint" role="status"></p><div class="canvas-toolbar"><label for="leOutputMode">比對方式</label><select id="leOutputMode"><option value="wipe">拖曳比對</option><option value="diff">差異 ×4</option></select><label for="leOutputZoom">縮放</label><select id="leOutputZoom"><option value="fit">符合視窗</option><option value="1">100%</option><option value="2">200%</option><option value="4">400%</option></select></div><div id="leOutputViewport" class="canvas-viewport"><canvas id="leOutputCanvas" aria-label="實際輸出首尾 PNG 比較"></canvas></div><label class="split-range" for="leOutputSplit">分隔線<input id="leOutputSplit" type="range" min="0" max="100" value="50" aria-label="實際輸出首尾分隔線"></label><p id="leOutputHint" class="hint"></p></dialog>
+
+<div id="toast" role="alert" hidden></div>
+<script>window.APP_TOKEN='__TOKEN__';</script>
+<script src="/workspace.js?v=39"></script>
+<script src="/app.js?v=39"></script>
+<script src="/queue.js?v=39"></script>
+<script src="/region.js?v=39"></script>
+<script src="/loop.js?v=39"></script>
+<script src="/transitions.js?v=39"></script>
+<script src="/beginner.js?v=39-preview-1"></script>
+
+</body>
+</html>

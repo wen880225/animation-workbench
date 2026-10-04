@@ -1,0 +1,1 @@
+﻿此處放接收者自行取得的 FFmpeg 套件 bin 內容，包含 ffmpeg.exe、ffprobe.exe 及必要 DLL。也可使用 PATH 中的 FFmpeg。此分享包未附任何 FFmpeg 執行檔。

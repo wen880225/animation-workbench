@@ -1,0 +1,33 @@
+# User media and working state
+/jobs/
+/uploads/
+/transition_projects/
+/batch_queue.json
+/backups/
+/分享套件/
+/展示圖/
+*.log
+*.log.*
+
+# Local environments, models and executables are never shipped
+/.venv/
+__pycache__/
+*.py[cod]
+*.safetensors
+*.ckpt
+*.onnx
+*.pth
+*.exe
+*.dll
+*.zip
+.env
+.env.*
+!.env.example
+
+# Local verification outputs
+/SHA256.json
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
