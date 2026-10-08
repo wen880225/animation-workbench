@@ -39,10 +39,74 @@
 body.focus-canvas #transitionPanel{max-width:none;grid-template-columns:minmax(0,1fr);border:0}body.focus-canvas #transitionPanel .tr-inspector{display:none}
 
 /* The output stage has its own load/export status; comparison text belongs to editing. */
-.transitions-panel[data-step="output"] #trMessage{display:none}
+.transitions-panel[data-step="output"] #trMessage:not([data-error="true"]){display:none}
+#transitionPanel #trMessage[data-error="true"]{display:block;max-height:100px;overflow:auto;border:1px solid currentColor;border-radius:7px;padding:8px 12px;margin:0;flex-shrink:0}
+#trOutputInfo{white-space:pre-line;line-height:1.5}
 .tr-bottom-tools{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
 .tr-bottom-tools .tr-canvas-help{position:relative;overflow:visible;max-height:none}
 .tr-bottom-tools .tr-canvas-help[open]>p{position:absolute;bottom:100%;left:0;width:330px;max-width:75vw;z-index:5;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--panel);box-shadow:0 4px 18px #0005}
 #transitionPanel .tr-canvas-labels{width:100%!important;max-width:520px;min-height:22px}
 #transitionPanel .tr-canvas-labels span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #transitionPanel .tr-step-footer button{font-size:.875rem;padding-inline:8px;white-space:nowrap}
+
+/* One shared boundary workspace: reserve vertical space for the actual animation. */
+#transitionPanel .stage-column{position:relative;padding:8px 12px;gap:6px}
+#transitionPanel .tr-modebar{min-height:36px;gap:10px;flex-wrap:nowrap}
+#transitionPanel .tr-stage-heading h2{font-size:17px;line-height:20px;margin:0}
+#transitionPanel .tr-stage-heading>.hint{font-size:13px;line-height:16px}
+#transitionPanel .tr-workarea{gap:6px}
+#transitionPanel .tr-pair-selectors{display:flex;gap:6px;flex-wrap:nowrap}
+#transitionPanel .tr-pair-selectors>label{flex:1;min-width:0;font-size:13px;gap:5px}
+#transitionPanel .tr-advanced-settings .tr-pair-selectors{display:grid;grid-template-columns:minmax(0,1fr) auto}
+#transitionPanel .tr-pair-selectors select,#transitionPanel .tr-pair-selectors button{min-height:32px;height:32px;padding:3px 7px;font-size:14px}
+#transitionPanel .tr-canvas-labels{min-height:18px;font-size:13px;line-height:18px}
+#transitionPanel .view-controls{min-height:32px;flex-wrap:nowrap;gap:8px}
+#transitionPanel .view-controls label{font-size:13px;gap:5px}
+#transitionPanel .view-controls select{height:32px;min-height:32px;max-width:180px;padding:3px 6px;font-size:14px}
+#transitionPanel .tr-bottom-tools{height:32px;min-height:32px;flex-wrap:nowrap}
+#transitionPanel .tr-bottom-tools button,#transitionPanel .tr-play-settings>summary{min-height:32px;padding:4px 9px;font-size:14px}
+#transitionPanel .tr-stage-guide{position:absolute;z-index:4;left:24px;right:24px;top:72px;padding:10px 12px;max-width:640px;margin:auto}
+#transitionPanel #trMessage:not([data-error=true]){display:none}
+#transitionPanel #trMessage[data-error=true]{position:absolute;bottom:8px;left:12px;right:12px;z-index:8;background:var(--panel);box-shadow:0 4px 18px #0004}
+#transitionPanel .tr-step-nav{grid-template-columns:repeat(3,minmax(0,1fr))}
+#transitionPanel .tr-step-nav button{padding:8px 6px;gap:5px;min-height:44px;font-size:14px}
+#transitionPanel .tr-step-nav button>span{width:20px;height:20px;font-size:12px}
+#transitionPanel .tr-sticky-actions .buttons button{min-width:0;white-space:nowrap;height:40px;max-height:40px;min-height:40px;padding:6px 10px}
+#transitionPanel .tr-sticky-actions kbd{display:none}
+.tr-source-choices{display:grid;gap:7px;max-height:220px;overflow:auto;margin:12px 0}
+.tr-source-choices>label{display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);line-height:1.45;font-size:14px}
+.tr-source-choices input{flex:0 0 auto;margin-top:3px}.tr-source-choices span{min-width:0;overflow-wrap:anywhere}
+.tr-finish-card{padding:12px!important;border:1px solid var(--line)!important;border-radius:9px;background:var(--surface)}
+.tr-finish-fixes p{margin:8px 0;line-height:1.5;font-size:14px}.tr-finish-reviews{display:grid;gap:8px}
+.tr-review-item{text-align:left;justify-content:flex-start;white-space:normal;line-height:1.5;padding:10px 12px;border-color:var(--warning);background:var(--field)}
+.tr-finish-item{min-width:0;margin:10px 0}.tr-finish-item>button{width:100%;white-space:normal;text-align:left;line-height:1.5}
+.tr-candidate-link{padding:10px 12px;border:1px solid var(--accent);background:var(--field);border-radius:7px;color:var(--text)}
+.tr-candidate-metrics{font-size:14px;line-height:1.6;margin:7px 0!important;color:var(--muted);font-variant-numeric:tabular-nums}
+.tr-candidate-details{margin:6px 0;font-size:14px;line-height:1.5}.tr-candidate-details>summary{color:var(--muted);cursor:pointer;padding:3px 0}
+.tr-attempt-group{margin:12px 0;padding-top:10px;border-top:1px solid var(--line)}.tr-attempt-group h4{font-size:15px;line-height:1.5;margin:0 0 8px;color:var(--text)}.tr-attempt-state{font-weight:600;color:var(--muted)}
+.tr-strength-attempt{padding:7px 0;border-top:1px solid var(--line)}.tr-strength-attempt>summary{cursor:pointer;font-size:14px;line-height:1.6;color:var(--text)}.tr-strength-attempt[open]>summary{font-weight:600}
+.tr-failed-checks{font-size:14px;line-height:1.6;margin:6px 0 0;padding-left:20px;color:var(--warning)}.tr-failed-checks li{margin:5px 0}
+.tr-preview-status[data-kind=candidate]{background:var(--panel);color:var(--accent);border-color:var(--accent);font-weight:600}
+#transitionPanel #trCandidateTools{color:var(--accent);font-weight:600}#transitionPanel #trCandidateTools select{max-width:175px}
+#transitionPanel .view-controls:has(#trCandidateTools:not([hidden])) .split-range{display:none}
+.tr-product-details{position:absolute;z-index:5;right:16px;bottom:78px;max-width:75%;font-size:13px}
+.tr-product-details>summary{padding:5px 10px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.tr-product-details[open]{width:420px;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 18px #0005}
+#transitionPanel #trOutputInfo{font-size:14px;line-height:18px;max-height:40px;overflow:auto}
+#transitionPanel #trOutputArea>.canvas-toolbar{min-height:32px;flex-wrap:nowrap;gap:6px;font-size:14px}
+#transitionPanel #trOutputArea>.canvas-toolbar select,#transitionPanel #trOutputArea>.canvas-toolbar button{height:32px;min-height:32px;padding:3px 7px;font-size:14px}
+#transitionPanel #trOutputArea>.transport{min-height:32px;gap:7px;flex-wrap:nowrap}
+#transitionPanel #trOutputArea>.transport button,#transitionPanel #trOutputArea>.transport select{height:32px;min-height:32px;padding:3px 7px;font-size:14px}
+#transitionPanel .tr-playback-state{font-size:13px;line-height:18px}
+@media(max-width:1100px){#transitionPanel .tr-pair-selectors>label{font-size:0}#transitionPanel .tr-stage-heading h2{font-size:15px}#transitionPanel .tr-layout-choice{font-size:13px}#transitionPanel .view-controls .split-range{display:none}}
+
+/* Result descriptions are passive; actions have an explicit raised button. */
+#transitionPanel p.tr-review-item{margin:0 0 12px;padding:0;background:none;border:0;box-shadow:none;cursor:default;font-size:16px;line-height:1.65;color:var(--text)}
+#transitionPanel .tr-finish-item{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+#transitionPanel button.tr-candidate-link{background:var(--accent);color:var(--on-accent);display:block;width:100%;min-height:48px;padding:12px 16px;margin-top:12px;text-align:center;font-size:16px;font-weight:700;border:1px solid var(--accent);border-radius:8px;box-shadow:0 2px 3px #0002;cursor:pointer}
+#transitionPanel button.tr-candidate-link:hover{filter:brightness(1.08)}
+#transitionPanel button.tr-candidate-link:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+#transitionPanel button.tr-candidate-link:active{transform:translateY(1px);box-shadow:none}
+#transitionPanel .tr-candidate-details>summary{min-height:44px;display:flex;align-items:center;gap:8px;color:var(--text);font-size:15px}
+#transitionPanel .tr-candidate-details>summary::before{content:'▸'}
+#transitionPanel .tr-candidate-details[open]>summary::before{content:'▾'}

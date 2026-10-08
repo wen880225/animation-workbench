@@ -13,7 +13,7 @@ import launcher_restart as restart
 
 ROOT = Path(__file__).resolve().parent
 PORT = 8767
-EXPECTED_VERSION = '3.9'
+EXPECTED_VERSION = '3.12.0'
 URL = f'http://127.0.0.1:{PORT}'
 
 def ready():
@@ -25,9 +25,9 @@ def ready():
             return False
         with urllib.request.urlopen(URL+'/api/version', timeout=2) as response:
             info=json.load(response)
-            if info.get('version') != EXPECTED_VERSION or info.get('workspace') != 3 or any(info.get('features',{}).get(name) != expected for name,expected in (('transitions',1),('transition_tone',1),('transition_sequence',2),('transition_seams',1),('queue',1),('region',3),('alignment',1),('closure',1))):
+            if info.get('version') != EXPECTED_VERSION or info.get('workspace') != 3 or any(info.get('features',{}).get(name) != expected for name,expected in (('transitions',1),('transition_tone',1),('transition_sequence',2),('transition_seams',2),('boundary_routes',1),('finish_plan',3),('candidate_playback',1),('seam_repair',2),('queue',1),('region',3),('alignment',1),('closure',1))):
                 return False
-        for asset in ('workspace.js','workspace.css','transitions.js','transitions.css','queue.js','region.js','region.css','beginner.js','beginner.css'):
+        for asset in ('workspace.js','workspace.css','transitions.js','transitions.css','queue.js','region.js','region.css','beginner.js','beginner.css','boundary_workspace.js','seam_repair.js'):
             with urllib.request.urlopen(URL+'/'+asset, timeout=2) as response:
                 if not response.read():
                     return False

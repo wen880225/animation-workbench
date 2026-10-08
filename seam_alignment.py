@@ -238,6 +238,78 @@ def jacobian_stats(dx,dy,strength=1.):
     return dict(min=float(determinant.min()),percentile_01=float(np.percentile(determinant,1)),max=float(determinant.max()),horizontal_derivative_min=float((1+ux).min()),vertical_derivative_min=float((1+vy).min()),nonpositive_pixels=int(np.count_nonzero(determinant<=0)),outside_source_pixels=int(np.count_nonzero((mx<-.0001)|(mx>w-1+.0001)|(my<-.0001)|(my>h-1+.0001))),locked_x_max_abs_px=float(np.max(np.abs(dx[:,[0,-1]]))))
 
 
+def support_map_stats(source,target,dx,dy,strength=1.):
+    """Soft adoption limits on visible pixels AND their inverse sample support.
+
+    This does not replace maps()'s global fold/out-of-canvas guard. Transparent
+    RBF extrapolation remains guarded, but is not labelled visible movement.
+    """
+    _dependencies()
+    if not 0 < strength <= 1:
+        raise ValueError('局部候選強度必須大於零且不超過 100%')
+    a,b=np.asarray(source),np.asarray(target)
+    if a.shape != b.shape or a.shape[:2] != dx.shape or dx.shape != dy.shape:
+        raise ValueError('局部候選尺寸不符')
+    h,w=dx.shape;yy,xx=np.mgrid[:h,:w]
+    u=xx+dx*strength;v=yy+dy*strength
+    sampled=cv2.remap(a[:,:,3],u.astype(np.float32),v.astype(np.float32),cv2.INTER_LINEAR,
+                      borderMode=cv2.BORDER_CONSTANT,borderValue=0)
+    # Union, never intersection: displaced/new fine appendages must count too.
+    support=(a[:,:,3]>2)|(b[:,:,3]>2)|(sampled>2)
+    sy,sx=np.nonzero(support)
+    for ox,oy in ((0,0),(1,0),(0,1),(1,1)):
+        qx=np.clip(np.floor(u[sy,sx]).astype(int)+ox,0,w-1)
+        qy=np.clip(np.floor(v[sy,sx]).astype(int)+oy,0,h-1)
+        support[qy,qx]=True
+    support=cv2.dilate(np.uint8(support),np.ones((3,3),np.uint8)).astype(bool)
+    vx,ux=np.gradient(dx.astype(float)*strength);vy,uy=np.gradient(dy.astype(float)*strength)
+    linear=ux+vy;quadratic=ux*vy-vx*uy
+    def strength_minimum(linear,quadratic):
+        minimum=np.minimum(1.,1+linear+quadratic)
+        vertex=np.divide(-linear,2*quadratic,out=np.zeros_like(linear),where=quadratic>0)
+        use=(quadratic>0)&(vertex>0)&(vertex<1)
+        minimum[use]=np.minimum(minimum[use],1+linear[use]*vertex[use]+quadratic[use]*vertex[use]**2)
+        return minimum
+    minimum=strength_minimum(linear,quadratic)
+    movement=np.hypot(dx,dy)*strength
+    if not support.any():
+        raise ValueError('局部候選沒有可量測的有效角色區域')
+    low=float(minimum[support].min());high=float((1+linear+quadratic)[support].max())
+    # Preserve the existing cell guard, restricted only for these additional
+    # adoption thresholds. Centered gradients alone can hide adjacent reversal.
+    cells=support[:-1,:-1]|support[1:,:-1]|support[:-1,1:]|support[1:,1:]
+    dxh=np.diff(dx.astype(float)*strength,axis=1);dxv=np.diff(dx.astype(float)*strength,axis=0)
+    dyh=np.diff(dy.astype(float)*strength,axis=1);dyv=np.diff(dy.astype(float)*strength,axis=0)
+    for p,q,r,s in ((dxh[:-1],dxv[:,:-1],dyh[:-1],dyv[:,:-1]),(dxh[1:],dxv[:,1:],dyh[1:],dyv[:,1:])):
+        linear=p+s;quadratic=p*s-q*r
+        low=min(low,float(strength_minimum(linear,quadratic)[cells].min()))
+        high=max(high,float((1+linear+quadratic)[cells].max()))
+    return dict(support_max_px=float(movement[support].max()),canvas_max_px=float(movement.max()),
+                support_pixels=int(support.sum()),jacobian_min=low,jacobian_max=high)
+
+
+def sampling_support_loss(source,candidate,dx,dy,strength):
+    """Count source alpha support no longer reached by visible output samples.
+
+    A geometric correction never borrows target RGB. This additional native
+    coverage check detects sampling-away of narrow alpha features at any fade.
+    """
+    _dependencies()
+    a,b=np.asarray(source),np.asarray(candidate)
+    h,w=dx.shape;yy,xx=np.mgrid[:h,:w]
+    u=xx+dx*strength;v=yy+dy*strength
+    sy,sx=np.nonzero(b[:,:,3]>64)
+    coverage=np.zeros((h,w),dtype=bool)
+    x0=np.floor(u[sy,sx]).astype(int);y0=np.floor(v[sy,sx]).astype(int)
+    fx=u[sy,sx]-x0;fy=v[sy,sx]-y0
+    for ox,oy,weight in ((0,0,(1-fx)*(1-fy)),(1,0,fx*(1-fy)),(0,1,(1-fx)*fy),(1,1,fx*fy)):
+        x=x0+ox;y=y0+oy
+        valid=(weight>.05)&(x>=0)&(x<w)&(y>=0)&(y<h)
+        coverage[y[valid],x[valid]]=True
+    distance=cv2.distanceTransform(np.uint8(~coverage),cv2.DIST_L2,cv2.DIST_MASK_PRECISE)
+    return int(np.count_nonzero((a[:,:,3]>64)&(distance>1.25)))
+
+
 def _line_distance(a,b):
     if not a.any() or not b.any():return None
     da=cv2.distanceTransform(np.uint8(~a),cv2.DIST_L2,cv2.DIST_MASK_PRECISE)
@@ -379,4 +451,140 @@ def build_alignment(source_array,target_array,provenance):
         if not boundary['matched'] and (boundary['source_intervals'] or boundary['target_intervals']):warnings.append(f'{label}貼邊輪廓無可靠對應，保留原有邊界')
     report=dict(dimensions=[w,h],selection=selection,before=metrics(source,target),after=metrics(candidate,target),boundaries=dict(left=left_report,right=right_report),jacobian=_guard(dx,dy),guard_scale=scale,max_displacement_px=float(np.hypot(dx,dy).max()),warnings=warnings,note='對位依計算當時的參考畫面保存；請播放確認動作速度及半透明輪廓。')
     return dict(enabled=True,strength=100.,model=model),report
+
+
+def estimate_similarity(source_array, target_array):
+    """Estimate only translation and uniform scale; never resample saved assets.
+
+    Alpha moments provide a deterministic initial alignment. A small bounded
+    refinement uses associated RGBA, so invisible RGB is not a correspondence.
+    Safety/adoption belongs to the caller; a measured large move is not clipped
+    down to the permitted move and falsely reported as a successful alignment.
+    """
+    _dependencies()
+    from scipy.optimize import minimize
+    source, target = np.asarray(source_array), np.asarray(target_array)
+    if source.shape != target.shape or source.ndim != 3 or source.shape[2] != 4:
+        raise ValueError('對位需要相同畫布的 RGBA 影格')
+    h, w = source.shape[:2]
+    yy, xx = np.mgrid[:h, :w]
+    def moments(image):
+        alpha = image[:, :, 3].astype(np.float64) / 255
+        area = float(alpha.sum())
+        if area < 32:
+            raise ValueError('有效角色區域不足，無法估計位置與尺寸')
+        return area, np.array([(alpha * xx).sum(), (alpha * yy).sum()]) / area
+    area_a, center_a = moments(source)
+    area_b, center_b = moments(target)
+    scale = math.sqrt(area_b / area_a)
+    center = np.array([(w - 1) / 2, (h - 1) / 2])
+    shift = center_b - (center_a - center) * scale - center
+    initial = np.array([*shift, (scale - 1) * 100], dtype=float)
+    # Grossly different silhouettes are useful measurements, not fit candidates.
+    if abs(initial[2]) > 5 or np.linalg.norm(initial[:2]) > 25:
+        return dict(dx=float(initial[0]), dy=float(initial[1]), scale=float(scale), refined=False)
+    factor = min(1., 384 / max(w, h))
+    size = (max(16, round(w * factor)), max(16, round(h * factor)))
+    fx, fy = size[0] / w, size[1] / h
+    def features(image):
+        p = image.astype(np.float32) / 255
+        p[:, :, :3] *= p[:, :, 3:4]
+        p = cv2.GaussianBlur(p, (0, 0), .65)
+        return cv2.resize(p, size, interpolation=cv2.INTER_AREA)
+    left, right = features(source), features(target)
+    cx, cy = (size[0] - 1) / 2, (size[1] - 1) / 2
+    def cost(parameters):
+        dx, dy, percent = parameters
+        s = 1 + percent / 100
+        matrix = np.float32([[s, 0, (1-s)*cx + dx*fx], [0, s, (1-s)*cy + dy*fy]])
+        warped = cv2.warpAffine(left, matrix, size, flags=cv2.INTER_LINEAR,
+                                borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        return float(np.mean((warped - right) ** 2))
+    if cost(initial) > 1e-10:
+        bounds = [(initial[0]-1.25, initial[0]+1.25), (initial[1]-1.25, initial[1]+1.25),
+                  (max(-5., initial[2]-.7), min(5., initial[2]+.7))]
+        fitted = minimize(cost, initial, method='Powell', bounds=bounds,
+                          options=dict(maxiter=25, xtol=.005, ftol=1e-7)).x
+        candidates = [initial, fitted]
+        snapped = fitted.copy()
+        for index in (0, 1):
+            if abs(snapped[index] - round(snapped[index])) < .12:
+                snapped[index] = round(snapped[index])
+        if abs(snapped[2]) < .08:
+            snapped[2] = 0
+        candidates.append(snapped)
+        # Prefer the simpler transform when the measured costs are indistinct.
+        best = min(candidates, key=cost)
+        if cost(snapped) <= cost(best) + 1e-9:
+            best = snapped
+    else:
+        best = initial
+    if factor < 1 and cost(initial) > 1e-10:
+        # A 384px pyramid can bias a native subpixel shift by ~0.1px. Refine
+        # against original pixel centers, using a deterministic foreground
+        # sample rather than repeatedly warping an entire large image.
+        from scipy import ndimage
+        def full_features(image):
+            p=image.astype(np.float32)/255;p[:,:,:3]*=p[:,:,3:4]
+            return ndimage.gaussian_filter(p,(.65,.65,0))
+        full_a,full_b=full_features(source),full_features(target)
+        rows,columns=np.where((source[:,:,3]>32)|(target[:,:,3]>32))
+        step=max(1,math.ceil(len(rows)/6000));rows,columns=rows[::step],columns[::step]
+        ref=full_b[rows,columns]
+        def native_cost(parameters):
+            dx,dy,percent=parameters;s=1+percent/100
+            u=(columns-center[0]-dx)/s+center[0]
+            v=(rows-center[1]-dy)/s+center[1]
+            sampled=np.column_stack([ndimage.map_coordinates(full_a[:,:,channel],[v,u],order=1,mode='constant') for channel in range(4)])
+            return float(np.mean((sampled-ref)**2))
+        native=minimize(native_cost,best,method='Powell',
+                        bounds=[(best[0]-.35,best[0]+.35),(best[1]-.35,best[1]+.35),(best[2]-.08,best[2]+.08)],
+                        options=dict(maxiter=15,xtol=.0005,ftol=1e-8)).x
+        candidates=[best,initial,native]
+        snapped=native.copy()
+        for index in (0,1):
+            if abs(snapped[index]-round(snapped[index]))<.04:snapped[index]=round(snapped[index])
+        if abs(snapped[2])<.04:snapped[2]=0
+        candidates.append(snapped)
+        best=min(candidates,key=native_cost)
+    return dict(dx=round(float(best[0]), 5), dy=round(float(best[1]), 5),
+                scale=round(1 + float(best[2]) / 100, 7), refined=True)
+
+
+def similarity_pixels(pixels, transform):
+    """One premultiplied bilinear sample for a persisted similarity map."""
+    h,w = pixels.shape[:2]
+    yy,xx = np.mgrid[:h,:w].astype(np.float32)
+    cx,cy = (w-1)/2,(h-1)/2
+    scale = transform['scale']
+    dx = (xx-cx-transform['dx'])/scale+cx-xx
+    dy = (yy-cy-transform['dy'])/scale+cy-yy
+    return resample_frame(pixels,dx,dy)
+
+
+def similarity_morph(image, reference, transform, amount):
+    """Registered blend with known rigid geometry, without optical flow.
+
+    Both images are sampled once into the same intermediate geometry. The
+    target-to-intermediate map is T(amount) @ inverse(T); applying an affine
+    first and optical flow second would blur and deform an otherwise rigid move.
+    """
+    if image.size != reference.size:
+        raise ValueError('共同基準與影格的畫布尺寸不同')
+    if amount <= 0:return image.copy()
+    if amount >= 1:return reference.copy()
+    s = transform['scale']
+    forward = dict(scale=1+amount*(s-1),dx=amount*transform['dx'],dy=amount*transform['dy'])
+    backward_scale = forward['scale']/s
+    backward = dict(scale=backward_scale,dx=(amount-backward_scale)*transform['dx'],
+                    dy=(amount-backward_scale)*transform['dy'])
+    source = similarity_pixels(np.asarray(image.convert('RGBA')),forward).astype(np.float32)
+    target = similarity_pixels(np.asarray(reference.convert('RGBA')),backward).astype(np.float32)
+    source[:,:,:3] *= source[:,:,3:4]/255
+    target[:,:,:3] *= target[:,:,3:4]/255
+    out = source*(1-amount)+target*amount
+    alpha = out[:,:,3:4]
+    out[:,:,:3] = np.divide(out[:,:,:3]*255,alpha,out=np.zeros_like(out[:,:,:3]),where=alpha>0)
+    out = np.uint8(np.clip(np.rint(out),0,255));out[out[:,:,3]==0,:3]=0
+    return Image.fromarray(out,'RGBA')
 

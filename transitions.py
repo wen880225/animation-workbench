@@ -30,6 +30,8 @@ _FEATURE_LOCK = threading.RLock()
 _HEX = re.compile(r'^[0-9a-f]{32}$')
 _AFFINE_DEFAULTS = dict(dx=0, dy=0, sx=100, sy=100, angle=0, cx=50, cy=50)
 _AFFINE_LIMITS = dict(dx=(-100, 100), dy=(-100, 100), sx=(80, 120), sy=(80, 120), angle=(-10, 10), cx=(0, 100), cy=(0, 100))
+ROUTE_PREVIEW_BYTES = 384 * 1024 ** 2
+ROUTE_PREVIEW_ENCODED_BYTES = 96 * 1024 ** 2
 
 
 def _id(value, label='專案'):
@@ -227,6 +229,8 @@ def clip_signature(clip, source, project=None):
     if ts.active(project):
         value['seams'] = dict(binding=project['seam_closure']['binding'],
             links=[link for link in project['seam_closure']['links'] if clip['key'] in (link['a'],link['b'])])
+    if project and project.get('seam_repair'):
+        value['repair']=project['seam_repair']
     return _hash(value)
 
 
@@ -285,11 +289,26 @@ def _seam_binding(project, sources):
         source.pop('label',None)
         clips.append(dict(clip={key:value for key,value in clip.items() if key not in ('label','head_frames','tail_frames')},
                           source=source,tonal=_tonal_settings(project,clip)))
-    return _hash(dict(sequence=project['sequence'],clips=clips,renderer_version=1))
+    value=dict(sequence=project['sequence'],clips=clips,renderer_version=1)
+    # Default loops retain their pre-consolidation fingerprints.
+    if ts.route_mode(project) == 'open':value['route_mode']='open'
+    return _hash(value)
+
+
+def _closure_binding(project,sources,value):
+    base = _seam_binding(project,sources)
+    if not isinstance(value,dict) or value.get('schema') != 3:return base
+    links = value.get('links')
+    if not isinstance(links,list):raise ValueError('幾何接點記錄無效')
+    registrations = [dict(a=link.get('a'),b=link.get('b'),
+                          registration=ts.registration(link['registration']) if 'registration' in link else None)
+                     for link in links if isinstance(link,dict)]
+    return _hash(dict(base=base,windows=[dict(key=c['key'],head_frames=c['head_frames'],tail_frames=c['tail_frames']) for c in project['clips']],
+                      registrations=registrations))
 
 
 def _validate_seams(value, project, sources, skip=False):
-    result=ts.validate(value,project,_seam_binding(project,sources),projectdir(project['id'])/'anchors',skip)
+    result=ts.validate(value,project,_closure_binding(project,sources,value),projectdir(project['id'])/'anchors',skip)
     if result and result['enabled'] and not skip:
         for link in result['links']:
             if link['dimensions'] != list(sources[link['a']].dimensions):
@@ -298,6 +317,12 @@ def _validate_seams(value, project, sources, skip=False):
 
 
 def _verify_seams(project,sources):
+    import seam_repair as sr
+    if sr.active(project):
+        sr.validate(project['seam_repair'],project,sources)
+        for source in sources.values():
+            if any(_stamp(path)!=stamp for path,stamp in zip(source.files,source.stamps)):
+                raise ValueError('修復期間來源已變更，請重新修復')
     if not ts.active(project):
         return
     for source in sources.values():
@@ -306,7 +331,7 @@ def _verify_seams(project,sources):
     _validate_seams(project['seam_closure'],project,sources)
 
 
-def validate_project(value, skip_alignment=None, skip_tone=False, skip_seams=False):
+def validate_project(value, skip_alignment=None, skip_tone=False, skip_seams=False, skip_repair=False):
     if not isinstance(value, dict):
         raise ValueError('專案內容無效')
     pid = _id(value.get('id'))
@@ -340,14 +365,18 @@ def validate_project(value, skip_alignment=None, skip_tone=False, skip_seams=Fal
     if not sequence:
         sequence = list(by_key)
     sequence_version = _number(value.get('sequence_version', 1), 1, 2, '播放順序版本', True)
+    route_mode = ts.route_mode(value)
     if sequence_version == 2 and (len(sequence) != len(clips) or set(sequence) != set(by_key)):
         raise ValueError('固定循環順序必須包含每段動畫一次；請更新播放順序')
     shared_tone = _tone_values(value.get('shared_tone'), '整組')
     tone_match = _validate_tone_match(value.get('tone_match'), clips, sources, skip_tone)
-    tonal_project = dict(id=pid,clips=clips,sequence=sequence,shared_tone=shared_tone,tone_match=tone_match)
+    tonal_project = dict(id=pid,clips=clips,sequence=sequence,route_mode=route_mode,shared_tone=shared_tone,tone_match=tone_match)
     seam_closure=_validate_seams(value.get('seam_closure'),tonal_project,sources,skip_seams)
     if seam_closure is not None:
         tonal_project['seam_closure']=seam_closure
+    import seam_repair as sr
+    repair=sr.validate(value.get('seam_repair'),tonal_project,sources,skip_repair)
+    if repair is not None:tonal_project['seam_repair']=repair
     reviews = {}
     raw_reviews = value.get('reviews', {})
     if not isinstance(raw_reviews, dict) or len(raw_reviews) > 256:
@@ -363,17 +392,20 @@ def validate_project(value, skip_alignment=None, skip_tone=False, skip_seams=Fal
             continue
         reviews[key] = dict(signature=signature, verdict=review['verdict'], note=str(review.get('note', ''))[:2000])
     result = dict(id=pid, name=_name(value.get('name', saved.get('name', '表情切換')), '表情切換'), clips=clips, reviews=reviews,
-                  sequence=sequence[:], sequence_version=sequence_version, shared_tone=shared_tone,
+                  sequence=sequence[:], sequence_version=sequence_version, route_mode=route_mode, shared_tone=shared_tone,
                   created=saved.get('created', time.time()), updated=time.time())
     if tone_match is not None:
         result['tone_match'] = tone_match
     if seam_closure is not None:
         result['seam_closure']=seam_closure
+    if repair is not None:result['seam_repair']=repair
     return result, sources
 
 
 def project_signature(project, sources):
-    return _hash(dict(id=project['id'], name=project['name'], clips=[dict(key=c['key'], label=c['label'], signature=clip_signature(c, sources[c['key']], project)) for c in project['clips']], sequence=project['sequence'], renderer_version=1))
+    value=dict(id=project['id'], name=project['name'], clips=[dict(key=c['key'], label=c['label'], signature=clip_signature(c, sources[c['key']], project)) for c in project['clips']], sequence=project['sequence'], renderer_version=1)
+    if ts.route_mode(project) == 'open':value['route_mode']='open'
+    return _hash(value)
 
 
 def endpoint(clip, index):
@@ -453,22 +485,21 @@ def _render_base_frame(clip, source, index, max_size=None, project=None):
     im = le.adjust_tone(im, clip)
     im = le.adjust_tone(im, tonal['correction'])
     im = le.adjust_tone(im, tonal['shared'])
-    if max_size and not aligned:
-        original = im.size
-        im.thumbnail(max_size, Image.Resampling.LANCZOS)
-        affine['dx'] *= im.width / original[0]
-        affine['dy'] *= im.height / original[1]
-        local_region = affine.get('region') or {}
-        if local_region.get('mode') == 'split':
-            local_region['outside']['dx'] *= im.width / original[0]
-            local_region['outside']['dy'] *= im.height / original[1]
     r = dict(affine, protect=False, px=50, py=50, radius=15, ramp=0, end=1)
     image,clipped=le.transform(im, r, position)
-    if max_size and aligned:image.thumbnail(max_size,Image.Resampling.LANCZOS)
+    # Preview and export use the same full-resolution transform, including its
+    # clipping verdict. Downsample only the final pixels for display.
+    if max_size:image.thumbnail(max_size,Image.Resampling.LANCZOS)
     return image,clipped
 
 
 def render_frame(clip, source, index, max_size=None, project=None):
+    import seam_repair as sr
+    if sr.active(project):
+        image=sr.read(project,clip['key'],index)
+        if image is not None:
+            if max_size:image.thumbnail(max_size,Image.Resampling.LANCZOS)
+            return image,False
     if not ts.active(project):
         return _render_base_frame(clip,source,index,max_size,project)
     # Closure is last and runs at full output resolution, after every manual,
@@ -477,10 +508,12 @@ def render_frame(clip, source, index, max_size=None, project=None):
     side,amount=ts.weight(clip,index)
     if amount>0:
         link=ts.link_for(project,clip['key'],side)
-        anchor=ts.read_anchor(projectdir(project['id'])/'anchors',link)
-        image=ts.lc.morph(image,anchor,amount)
-        if amount>=1:
-            clipped=False
+        if link is not None:
+            anchor=ts.read_anchor(projectdir(project['id'])/'anchors',link)
+            registration=ts.frame_registration(link,side,index)
+            image=le.sa.similarity_morph(image,anchor,registration,amount) if registration is not None else ts.lc.morph(image,anchor,amount)
+            if amount>=1:
+                clipped=False
     if max_size:
         image.thumbnail(max_size,Image.Resampling.LANCZOS)
     return image,clipped
@@ -539,12 +572,11 @@ def analyze(project, sources, scope='all'):
     if scope not in ('all', 'sequence'):
         raise ValueError('接點分析範圍無效')
     if scope == 'sequence':
-        order = project['sequence']
         by_key = {c['key']: c for c in project['clips']}
-        pairs = [(by_key[a], by_key[b]) for a, b in dict.fromkeys(zip(order, order[1:]+order[:1]))]
+        pairs = [(by_key[a], by_key[b]) for a, b in dict.fromkeys(ts.route_pairs(project))]
     else:
         pairs = [(a,b) for a in project['clips'] for b in project['clips']]
-    return dict(scope=scope, pairs=[dict(a=a['key'], b=b['key'], metrics=metrics(a, b, sources, project), signature=pair_signature(a, b, sources, project)) for a,b in pairs],
+    return dict(scope=scope, route_mode=ts.route_mode(project), pairs=[dict(a=a['key'], b=b['key'], metrics=metrics(a, b, sources, project), signature=pair_signature(a, b, sources, project)) for a,b in pairs],
                 metric_note='數字越低越接近。使用縮小畫面估算，動作按各來源 FPS 換算；請播放確認，分數不代表自動合格。')
 
 
@@ -560,6 +592,41 @@ def render_preview(project, sources, a, b, span=6):
             clipped |= edge
             frames.append(dict(image=le.png64(image), label=c['label'], clip_key=c['key'], frame=index, duration_ms=1000 / float(Fraction(sources[c['key']].fps))))
     return dict(frames=frames, dimensions=list(image.size), preview=True, clipped=clipped, source_dimensions=list(sources[a].dimensions),seam_closure=ts.status(project))
+
+
+def render_route_preview(project, sources):
+    if not project['clips']:
+        raise ValueError('請先加入動畫，再預覽整條路線')
+    signature = project_signature(project, sources)
+    decoded_bytes = 0
+    for clip in project['clips']:
+        width, height = sources[clip['key']].dimensions
+        scale = min(1., 360 / max(width, height))
+        decoded_bytes += math.ceil(width * scale) * math.ceil(height * scale) * 4 * (clip['end'] - clip['start'] + 1)
+    if decoded_bytes > ROUTE_PREVIEW_BYTES:
+        raise ValueError('整條草稿預覽超過 384 MiB 解碼預算；請分組預覽，或輸出後逐段檢查。未省略任何影格。')
+    clips, clipped_frames, encoded_bytes = [], [], 0
+    for clip in project['clips']:
+        source = sources[clip['key']]
+        frames = []
+        for index in range(clip['start'], clip['end'] + 1):
+            image, clipped = render_frame(clip, source, index, (360, 360), project)
+            data = le.png64(image)
+            encoded_bytes += len(data)
+            if encoded_bytes > ROUTE_PREVIEW_ENCODED_BYTES:
+                raise ValueError('整條草稿預覽超過 96 MiB 傳輸預算；請分組預覽。未省略任何影格。')
+            frames.append(dict(image=data, frame=index, duration_ms=1000 / float(Fraction(source.fps))))
+            if clipped:
+                clipped_frames.append(dict(clip_key=clip['key'], frame=index))
+        clips.append(dict(key=clip['key'], label=clip['label'], fps=source.fps, dimensions=list(source.dimensions),
+                          preview_dimensions=list(image.size), frames=frames, count=len(frames)))
+    # _read_frame rejects changes during the loop; also cover an already-read
+    # source changing before the last clip completes.
+    for source in sources.values():
+        if any(_stamp(path) != stamp for path, stamp in zip(source.files, source.stamps)):
+            raise ValueError('草稿預覽期間來源已變更，請重新載入來源後再預覽')
+    return dict(clips=clips, sequence=list(project['sequence']), route_mode=ts.route_mode(project),
+                signature=signature, preview=True, clipped=bool(clipped_frames), clipped_frames=clipped_frames)
 
 
 def _version_dir(pid, version):
@@ -580,7 +647,20 @@ def _versions(pid):
                 status.update(state='error', phase='上次輸出中斷，已保留該版本檔案')
             if status.get('state') == 'complete':
                 manifest = _read_json(path.parent / 'manifest.json')
-                status.update(clips=manifest.get('clips', []), signature=manifest.get('signature'), sequence=manifest.get('sequence', []),seam_verification=manifest.get('seam_verification'))
+                status.update(clips=manifest.get('clips', []), signature=manifest.get('signature'), sequence=manifest.get('sequence', []),route_mode=manifest.get('route_mode','loop'),seam_verification=manifest.get('seam_verification'))
+                status['source_freshness'] = dict(state='unknown', reason='此版本缺少來源快照，無法確認與目前來源一致')
+                try:
+                    snapshot = _read_json(path.parent / 'project_snapshot.json')
+                    status['project_snapshot'] = snapshot
+                except (OSError, ValueError, TypeError):
+                    snapshot = None
+                if snapshot and manifest.get('signature'):
+                    try:
+                        sources = {clip['key']: resolve_source(clip['job_id'], clip.get('version', 'original')) for clip in snapshot['clips']}
+                        matched = project_signature(snapshot, sources) == manifest['signature']
+                        status['source_freshness'] = dict(state='current' if matched else 'stale', reason='與輸出時來源一致' if matched else '來源 PNG 已變更；此為固定的先前輸出')
+                    except (OSError, ValueError, KeyError, TypeError):
+                        status['source_freshness'] = dict(state='stale', reason='原來源目前無法讀取或正在重跑；此為固定的先前輸出')
             status.update(name=path.parent.name, version=path.parent.name)
             result.append(status)
         except (OSError, ValueError, TypeError):
@@ -610,6 +690,8 @@ def _run_ffmpeg(args, log, pid, total, stage, after=''):
 
 
 def _identity(clip, index, project=None):
+    import seam_repair as sr
+    if sr.active(project) and sr.entry(project,clip['key'],index):return False
     if ts.active(project) and ts.weight(clip,index)[1]>0:
         return False
     if any(v for values in _tonal_settings(project, clip).values() for v in values.values()):
@@ -695,10 +777,11 @@ def export_worker(project, sources, version, signature):
             item = dict(key=clip['key'], label=clip['label'], frames=count, fps=source.fps, dimensions=list(source.dimensions), png_pattern=prefix + '/transparent_png/frame_%08d.png', video_path=prefix + '/animation.webm', source_range=[clip['start'], clip['end']], alpha_max_error=maximum_error)
             e.atomic_json(dest / 'verification.json', item)
             exported.append(item)
-        seam_verification=ts.verify_exports(project,exported,projectdir(pid),sources) if ts.active(project) else None
-        manifest = dict(project_id=pid, name=project['name'], version=version, signature=signature, state='complete', clips=exported, sequence=project['sequence'], sequence_version=project.get('sequence_version',1), shared_tone=project.get('shared_tone',{}), tone_match=project.get('tone_match'), seam_closure=project.get('seam_closure'),seam_verification=seam_verification,reviews=project['reviews'], created=started)
+        import seam_repair as sr
+        seam_verification=ts.verify_exports(project,exported,projectdir(pid),sources) if ts.active(project) else sr.verify_exports(project,exported,projectdir(pid),sources) if sr.active(project) else None
+        manifest = dict(project_id=pid, name=project['name'], version=version, signature=signature, state='complete', clips=exported, sequence=project['sequence'], sequence_version=project.get('sequence_version',1), route_mode=ts.route_mode(project), shared_tone=project.get('shared_tone',{}), tone_match=project.get('tone_match'), seam_closure=project.get('seam_closure'),seam_repair=project.get('seam_repair'),seam_verification=seam_verification,reviews=project['reviews'], created=started)
         e.atomic_json(root / 'manifest.json', manifest)
-        _set_status(pid, state='complete', phase='所有段落輸出完成，畫布與透明度已驗證', clips=exported, sequence=project['sequence'],seam_verification=seam_verification,elapsed=time.time() - started)
+        _set_status(pid, state='complete', phase='所有段落輸出完成，畫布與透明度已驗證', clips=exported, sequence=project['sequence'],route_mode=ts.route_mode(project),seam_verification=seam_verification,elapsed=time.time() - started)
     except Exception as exc:
         _set_status(pid, state='error', phase=str(exc), clips=exported, elapsed=time.time() - started)
     finally:
@@ -707,8 +790,8 @@ def export_worker(project, sources, version, signature):
 
 
 def match_tone(project, sources, reference=None):
-    if len(project['clips']) < 2:
-        raise ValueError('請加入至少兩段動畫後再統一明暗')
+    if not project['clips']:
+        raise ValueError('請先加入動畫後再統一明暗')
     reference = reference or project['sequence'][0]
     by_key = {c['key']: c for c in project['clips']}
     if reference not in by_key:
@@ -724,7 +807,7 @@ def match_tone(project, sources, reference=None):
         # group styling, so clicking Match again never compounds the result.
         samples[key] = [tt.sample_pixels(le.adjust_tone(_read_frame(source, index), clip)) for index in indices]
     target = tt.distribution(samples[reference])
-    if target[4] - target[0] < 12:
+    if len(project['clips']) > 1 and target[4] - target[0] < 12:
         raise ValueError('參考動畫的中間調層次不足，請選擇明暗層次較完整的參考')
     results, adjustments = [], {}
     for clip in project['clips']:
@@ -747,11 +830,19 @@ def match_tone(project, sources, reference=None):
     return dict(project=project, report=report)
 
 
-def build_seams(project,sources,references=None):
+def build_seams(project,sources,references=None,selected_pairs=None,registrations=None):
     pairs=ts.pairs(project)
-    ts.check_windows(project)
+    if selected_pairs is not None:
+        selected=[tuple(pair) for pair in selected_pairs]
+        if len(set(selected))!=len(selected) or any(pair not in pairs for pair in selected):
+            raise ValueError('所選接點不符合目前播放路線')
+        pairs=[pair for pair in pairs if pair in selected]
+    ts.check_windows(project,pairs)
     references={} if references is None else references
     allowed={a+'>'+b for a,b in pairs}
+    registrations = {} if registrations is None else registrations
+    if not isinstance(registrations,dict) or any(key not in allowed for key in registrations):
+        raise ValueError('幾何接點參數與所選路線不符')
     if not isinstance(references,dict) or any(key not in allowed or value not in ('a_tail','b_head') for key,value in references.items()):
         raise ValueError('共同接點參考選擇與目前播放順序不符')
     by_key={clip['key']:clip for clip in project['clips']}
@@ -768,13 +859,16 @@ def build_seams(project,sources,references=None):
             raise ValueError('共同接點的參考畫面可能超出畫布，請先修正該端變形')
         snapshot=ts.save_anchor(projectdir(project['id'])/'anchors',target)
         link=dict(a=a,b=b,reference=reference,**snapshot)
+        if a+'>'+b in registrations:
+            link['registration']=ts.registration(registrations[a+'>'+b])
         links.append(link)
         difference=np.abs(np.array(left,dtype=np.int16)-np.array(right,dtype=np.int16))
         report.append(dict(link,before_max_channel_error=int(difference.max()),
             before_changed_pixels=int(np.any(difference,axis=2).sum()),
             note='前後兩端將使用相同完整 RGBA 基準；附近漸變仍需播放檢查'))
     project=copy.deepcopy(project)
-    project['seam_closure']=dict(enabled=True,schema=1,sequence=list(project['sequence']),binding=binding,links=links,created=time.time())
+    project['seam_closure']=dict(enabled=bool(links),schema=3 if registrations else 2 if selected_pairs is not None else 1,sequence=list(project['sequence']),route_mode=ts.route_mode(project),binding=binding,links=links,created=time.time())
+    project['seam_closure']['binding']=_closure_binding(project,sources,project['seam_closure'])
     _verify_seams(project,sources)
     project['reviews']={}
     return dict(project=project,report=dict(links=report,note=ts.NOTE))
@@ -783,6 +877,18 @@ def build_seams(project,sources,references=None):
 def handle(action, data):
     if not isinstance(data, dict):
         raise ValueError('請求內容無效')
+    if action == 'repair_status':
+        import seam_repair
+        return seam_repair.status(data.get('id'),data.get('project_id'))
+    if action == 'repair_start':
+        import seam_repair
+        raw=copy.deepcopy(data.get('project'))
+        if not isinstance(raw,dict):raise ValueError('專案內容無效')
+        raw.pop('seam_repair',None);raw.pop('seam_closure',None)
+        for c in raw.get('clips',[]):
+            c['head']=dict(_AFFINE_DEFAULTS);c['tail']=dict(_AFFINE_DEFAULTS)
+        project,sources=validate_project(raw)
+        return seam_repair.start(project,sources)
     if action == 'catalog':
         return catalog()
     if action == 'create':
@@ -790,7 +896,7 @@ def handle(action, data):
         root = projectdir(pid)
         root.mkdir(parents=True)
         now = time.time()
-        project = dict(id=pid, name=_name(data.get('name', '表情切換'), '表情切換'), clips=[], reviews={}, sequence=[], sequence_version=2, shared_tone=dict(tone=0,contrast=0), created=now, updated=now)
+        project = dict(id=pid, name=_name(data.get('name', '表情切換'), '表情切換'), clips=[], reviews={}, sequence=[], sequence_version=2, route_mode=ts.route_mode(data), shared_tone=dict(tone=0,contrast=0), created=now, updated=now)
         with LOCK:
             e.atomic_json(root / 'project.json', project)
         return project
@@ -830,14 +936,23 @@ def handle(action, data):
             raise ValueError('找不到輸出資料夾')
         e.os.startfile(str(target))
         return dict(ok=True)
-    if action not in ('save', 'compare', 'analyze', 'render_preview', 'export','align','match_tone','build_seams'):
+    if action not in ('save', 'compare', 'analyze', 'render_preview', 'render_route_preview', 'export','align','match_tone','build_seams','finish_analyze','finish_apply','finish_candidate_preview','finish_candidate_playback'):
         raise ValueError('未知表情切換操作')
     skip=None
     if action=='align':
         if data.get('side') not in ('head','tail'):raise ValueError('請選擇修正 A 尾幀或 B 首幀')
         skip=(data.get('a') if data['side']=='tail' else data.get('b'),data['side'])
-    project, sources = validate_project(data.get('project'),skip_alignment=skip,skip_tone=action=='match_tone',skip_seams=action in ('build_seams','match_tone','align'))
+    finishing = action in ('finish_analyze', 'finish_apply', 'finish_candidate_preview','finish_candidate_playback')
+    # Finish plans may explicitly retire stale generated corrections at Apply.
+    # Structure, sources and manual alignment still pass the normal validators.
+    project, sources = validate_project(data.get('project'),skip_alignment=skip,skip_tone=finishing or action=='match_tone',skip_seams=finishing or action in ('build_seams','match_tone','align'))
     pid = project['id']
+    if finishing:
+        import finish_plan
+        if action == 'finish_analyze':return finish_plan.analyze(project,sources)
+        if action == 'finish_candidate_preview':return finish_plan.candidate_preview(project,sources,data.get('plan_id'),data.get('signature'),data.get('a'),data.get('b'))
+        if action == 'finish_candidate_playback':return finish_plan.candidate_playback(project,sources,data.get('plan_id'),data.get('signature'),data.get('a'),data.get('b'),data.get('view'),data.get('span',6))
+        return finish_plan.apply(project,sources,data.get('plan_id'),data.get('signature'))
     if action=='align':
         ca,cb=_pair(project,data.get('a'),data.get('b'))
         side=data['side'];selected,reference=(ca,cb) if side=='tail' else (cb,ca)
@@ -868,8 +983,10 @@ def handle(action, data):
         return analyze(project, sources, data.get('scope','all'))
     if action == 'render_preview':
         return render_preview(project, sources, data.get('a'), data.get('b'), data.get('span', 6))
-    if len(project['clips']) < 2:
-        raise ValueError('請加入至少兩段動畫後再輸出')
+    if action == 'render_route_preview':
+        return render_route_preview(project, sources)
+    if not project['clips']:
+        raise ValueError('請加入至少一段動畫後再輸出')
     signature = project_signature(project, sources)
     with le.LOCK, LOCK:
         if e.ACTIVE or any(v.get('state') == 'running' for v in le.RUNS.values()) or any(v.get('state') == 'running' for v in RUNS.values()):

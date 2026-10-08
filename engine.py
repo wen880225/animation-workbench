@@ -110,6 +110,62 @@ def update(jid, **fields):
         return j
 
 
+def source_freshness(j, source_revision, exported_at=None):
+    """Describe provenance without changing or deleting an immutable artifact."""
+    if any(f.get('status') != 'done' for f in j.get('frames', [])):
+        return dict(state='stale', reason='來源影格正在重跑或尚未完成；此為先前輸出', source_revision=source_revision)
+    if source_revision is None:
+        if exported_at is not None and j.get('media_changed_at', 0) > exported_at:
+            return dict(state='stale', reason='來源 PNG 在此版本輸出後已更新；此為先前輸出', source_revision=None)
+        return dict(state='unknown', reason='舊版本未記錄來源版本；可檢視，但無法確認與目前來源一致', source_revision=None)
+    if source_revision != j.get('media_revision', 0):
+        return dict(state='stale', reason='來源 PNG 已更新；此為先前輸出，請重新輸出目前結果', source_revision=source_revision)
+    return dict(state='current', reason='與目前去背來源一致', source_revision=source_revision)
+
+
+def public_job(j):
+    """Read-time compatibility for old jobs; do not migrate their JSON silently."""
+    result = copy.deepcopy(j)
+    names = result.get('video_files') or {
+        key: name for key, name in [('full', 'animation.webm'), ('preview', 'preview.webm')]
+        if name in result.get('exports', [])}
+    freshness = result.setdefault('export_freshness', {})
+    for kind, name in names.items():
+        if not name:
+            continue
+        recorded = freshness.get(kind, {})
+        # Pending retries invalidate outputs even before replacement pixels exist.
+        relevant = result
+        if kind == 'preview':
+            count = (recorded.get('report') or {}).get('verified_frames', result.get('config', {}).get('preview_frames', 48))
+            relevant = dict(result, frames=result.get('frames', [])[:int(count)])
+        state = source_freshness(relevant, recorded.get('source_revision'))
+        if recorded.get('state') == 'stale':
+            state.update(state='stale', reason=recorded.get('reason') or state['reason'])
+        freshness[kind] = dict(recorded, **state)
+    report = result.get('alpha_report')
+    if report and not any(names.get(kind) == report.get('file') and value.get('state') == 'current'
+                          for kind, value in freshness.items()):
+        result['alpha_report'] = None
+    result.setdefault('media_revision', 0)
+    return result
+
+
+def invalidate_exports(jid, reason, media_changed=False):
+    """Retain historical video identity while invalidating current-source claims."""
+    with LOCK:
+        j = read(jid)
+        freshness = public_job(j).get('export_freshness', {})
+        for kind, value in freshness.items():
+            value.update(state='stale', reason=reason)
+            if (j.get('alpha_report') or {}).get('file') == j.get('video_files', {}).get(kind):
+                value['report'] = j['alpha_report']
+        fields = dict(export_freshness=freshness, alpha_report=None)
+        if media_changed:
+            fields.update(media_revision=j.get('media_revision', 0) + 1, media_changed_at=time.time())
+        return update(jid, **fields)
+
+
 def request(url, payload=None, timeout=30, raw=False):
     data = None if payload is None else json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
@@ -388,8 +444,15 @@ def process_frame(jid, idx):
                     cropped = im.crop((0,0,w,h))
                     cropped.save(candidate, format='PNG')
             metrics = inspect_alpha(candidate, j['dimensions'])
-            with Image.open(candidate) as img:
-                save_clean_png(img,dest)
+            with LOCK:
+                replacement = dest.with_suffix('.partial.png')
+                try:
+                    with Image.open(candidate) as img:
+                        save_clean_png(img,replacement)
+                    os.replace(replacement,dest)
+                    invalidate_exports(jid, '來源 PNG 已更新；此為先前輸出，請重新輸出目前結果', media_changed=True)
+                finally:
+                    replacement.unlink(missing_ok=True)
             candidate.unlink(missing_ok=True)
             (directory(j,'cache')/('input_'+f['file'])).unlink(missing_ok=True)
             # Adjacent-frame area jumps are alerts, not automatic rejection.
@@ -459,7 +522,7 @@ def export(jid, preview=False):
                     frame_pattern='../transparent_png/frame_%08d.png',start_number=1,loop=True,audio=False,
                     timing='CFR normalized from source; duration preserved within one output frame',
                     godot='Godot 4 requires a WebM playback extension. PNG frames can use AnimatedSprite2D.'))
-    report=dict(file=target.name,verified_frames=len(selected),alpha_max_error=max_error,duration=metadata['duration'],audio=False,decoder='libvpx-vp9',verified_at=time.time())
+    report=dict(file=target.name,verified_frames=len(selected),alpha_max_error=max_error,duration=metadata['duration'],audio=False,decoder='libvpx-vp9',verified_at=time.time(),source_revision=j.get('media_revision',0))
     atomic_json(out/(name+'_verification.json'),report)
     videos=dict(j.get('video_files',{}));videos['preview' if preview else 'full']=target.name
     current=[]
@@ -467,7 +530,9 @@ def export(jid, preview=False):
         stem=Path(video).stem
         current.extend(p.name for p in (out/video,out/(stem+'.json'),out/(stem+'_verification.json')) if p.exists())
     current.extend(p.name for p in out.glob('atlas*') if p.is_file())
-    update(jid,video_files=videos,export_version=time.time(),alpha_report=report,exports=sorted(set(current)))
+    freshness=public_job(j).get('export_freshness',{})
+    freshness['preview' if preview else 'full']=dict(state='current',reason='與輸出時去背來源一致',source_revision=j.get('media_revision',0),report=report)
+    update(jid,video_files=videos,export_version=time.time(),alpha_report=report,exports=sorted(set(current)),export_freshness=freshness)
 
 
 def worker(jid, mode):

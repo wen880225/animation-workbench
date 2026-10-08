@@ -13,7 +13,7 @@
  let preferences={theme:'system',focus:false,tab:'tabPlayback',background:'#000',zoom:'fit'};
  try{const saved=JSON.parse(localStorage.getItem(preferenceKey)||'null');if(saved&&typeof saved==='object')preferences={...preferences,...saved}}catch(_){}
  if(!themes[preferences.theme]&&preferences.theme!=='system')preferences.theme='system';
- let currentJob=null,lastJobId=null,currentVideo=null,editStatuses=new Map(),transitionContext={project:null,status:{},dirty:false};
+ let currentJob=null,lastJobId=null,currentVideo=null,editStatuses=new Map(),draftStates=new Map(),transitionContext={project:null,status:{},dirty:false};
  function savePreferences(){try{localStorage.setItem(preferenceKey,JSON.stringify(preferences))}catch(_){byId('themeCurrent').textContent+=' · 此次選擇未能寫入瀏覽器'}}
  function setText(id,text){const node=byId(id);if(node&&node.textContent!==text)node.textContent=text}
  function openDialog(id){const dialog=byId(id);if(!dialog||dialog.open)return;for(const other of document.querySelectorAll('dialog[open]'))other.close();dialog.showModal();if(id==='taskDrawer')byId('openTasks').setAttribute('aria-expanded','true')}
@@ -41,8 +41,23 @@
  function updateContext(){
   const multi=transitionVisible(),p=transitionContext.project;
   byId('prepareExport').hidden=byId('openResults').hidden=byId('leDraftState').hidden=multi;byId('statusDetails').disabled=multi;
-  if(multi){setText('title',p?.name||'多動畫銜接');setText('documentMeta',p?(p.clips?.length||0)+' 段動畫 · 編排循環順序 · 固定畫布':'建立銜接專案，加入表情動畫')}
+  if(multi){setText('title',p?.name||'接點修整');setText('documentMeta',p?(p.clips?.length||0)+' 段動畫 · '+(p.route_mode==='open'?'依序播完':'循環播放')+' · 固定畫布':'加入已去背的動畫，開始接點修整')}
   else{setText('title',currentJob?.name||'動畫去背工作台');setText('documentMeta',currentJob?(currentJob.dimensions?.join(' × ')||'準備拆幀')+' · '+currentJob.config.fps+' FPS · '+currentJob.frames.length+' 幀':'建立任務，開始檢查你的動畫')}
+ }
+ function singleArtifactStatus(j,s){
+  const draft=draftStates.get(j.id),editing=byId('tabEdit')?.getAttribute('aria-selected')==='true',playback=byId('tabPlayback')?.getAttribute('aria-selected')==='true';
+  if(s?.state==='error')return '修整輸出失敗：'+s.phase;
+  if(playback&&currentVideo?.jobId===j.id){const f=currentVideo.freshness;return '正在檢查成品：'+currentVideo.label+(f?.state==='stale'?' · 此為先前輸出，尚未包含更新後的來源':f?.state==='unknown'?' · 此版本與目前來源尚未核對':'')}
+  if(s?.state==='complete'){
+   const name=s.version||'修整版本';
+   if(j.frames.some(f=>f.status!=='done'))return name+' 為先前輸出；來源影格仍待處理，請完成後再檢查及輸出。';
+   if(s.sourceRevision!=null&&s.sourceRevision!==Number(j.media_revision||0))return name+' 已輸出，但來源已更新；請重新檢查及輸出。';
+   if(s.sourceRevision==null||!s.recipeSignature||!draft?.recipeSignature)return name+' 已輸出；目前草稿與此版本尚未核對。';
+   return draft.recipeSignature===s.recipeSignature?'✓ '+name+' 已輸出 · 設定與目前草稿相同；仍需檢查成品':name+' 已輸出，但目前草稿已變更；請重新檢查及輸出。';
+  }
+  if(editing)return '目前顯示修整草稿；儲存方案不等於輸出成品。';
+  if(Object.values(j.export_freshness||{}).some(f=>f.state==='stale'))return '來源已更新 · 先前影片尚未重新合成，請至任務操作重新合成。';
+  return j.state==='complete'?'✓ 原始去背完成 · '+j.frames.filter(f=>f.status==='done').length+' 幀':j.phase||stateNames[j.state];
  }
  function renderStatus(){
   updateContext();
@@ -51,9 +66,9 @@
   byId('prepareExport').disabled=!j||j.frames.length<2||j.state==='running'||running||ts.state==='running';
   if(transitionVisible()||ts.state==='running'){
    const active=ts.state==='running';byId('globalProgress').hidden=!active;
-   setText('documentState',active?'多動畫輸出中':transitionContext.dirty?'銜接草稿有變更':'多動畫銜接');
+   setText('documentState',active?'動畫輸出中':transitionContext.dirty?'接點草稿有變更':'接點修整');
    byId('documentState').dataset.state=active?'running':'ready';
-   setText('globalStatus',active?(ts.phase||'正在輸出銜接動畫'):ts.state==='error'?'輸出失敗：'+ts.phase:ts.state==='complete'?'✓ 多動畫版本已完成 · 可在成品切換預覽檢查':transitionContext.dirty?'設定已變更，請儲存專案並重新檢查受影響方向':'先選 A → B，再檢查尾段接頭段的切換');
+   setText('globalStatus',active?(ts.phase||'正在輸出銜接動畫'):ts.state==='error'?'輸出失敗：'+ts.phase:transitionContext.completionText|| (transitionContext.dirty?'設定已變更，請重新檢查受影響接點':ts.state==='complete'?'已有輸出版本；目前草稿與此版本尚未核對':'目前顯示接點草稿；正式成品需另行輸出及驗收'));
    setText('globalEta',active&&ts.progress&&typeof progressText==='function'?progressText(ts.progress):active?'正在估算剩餘時間…':'');setProgress(ts.progress?.done||ts.done,ts.progress?.total||ts.total);return;
   }
   byId('globalProgress').hidden=!running&&j?.state!=='running';
@@ -64,12 +79,13 @@
    setText('globalStatus',(s.version||'修整版本')+' · '+(s.progress?.stage||s.phase||'正在準備'));
    setText('globalEta',s.progress&&typeof progressText==='function'?progressText(s.progress):'正在估算剩餘時間…');setProgress(s.progress?.done||s.done,s.progress?.total||j.frames.length);
   }else{
-   setText('documentState',stateNames[j.state]||j.state);byId('documentState').dataset.state=j.state;
-   const status=j.state==='running'?j.phase||'正在處理素材':s?.state==='complete'?'✓ '+(s.version||'修整版本')+' 輸出完成 · 可在版本選單播放':s?.state==='error'?'修整輸出失敗：'+s.phase:j.state==='complete'?'✓ 原始去背完成 · '+done+' 幀':j.phase||stateNames[j.state];
+   setText('documentState',j.state!=='running'&&byId('tabEdit')?.getAttribute('aria-selected')==='true'?'修整草稿':stateNames[j.state]||j.state);byId('documentState').dataset.state=j.state;
+   const status=j.state==='running'?j.phase||'正在處理素材':singleArtifactStatus(j,s);
    setText('globalStatus',status);setText('globalEta',j.state==='running'?byId('eta').textContent:'');setProgress(done,j.frames.length);
   }
  }
- window.workbenchExportStatus=s=>{if(!s?.jobId)return;const previous=editStatuses.get(s.jobId);editStatuses.set(s.jobId,s);renderStatus();if(s.state==='running'&&previous?.state!=='running')closeDialog('exportDialog')};
+ window.workbenchExportStatus=s=>{if(!s?.jobId)return;const previous=editStatuses.get(s.jobId);let snapshot={...s};if(s.recipeSignature){snapshot.sourceRevision=s.source_revision}else if(s.generation&&s.version===previous?.version&&s.generation===previous.generation){snapshot.recipeSignature=previous.recipeSignature;snapshot.sourceRevision=s.source_revision??previous.sourceRevision}editStatuses.set(s.jobId,snapshot);renderStatus();if(s.state==='running'&&previous?.state!=='running')closeDialog('exportDialog')};
+ window.addEventListener('workbench:draft',e=>{const d=e.detail;if(!d?.jobId||typeof d.recipeSignature!=='string')return;draftStates.set(d.jobId,d);if(currentJob?.id===d.jobId)renderStatus()});
  window.addEventListener('workbench:transitions',e=>{transitionContext=e.detail||{project:null,status:{}};renderStatus()});
  window.addEventListener('workbench:job',e=>{
   currentJob=e.detail;const j=currentJob;
@@ -77,7 +93,7 @@
   else setText('documentMeta','建立任務，開始檢查你的動畫');
   renderStatus();
  });
- window.addEventListener('workbench:video',e=>{currentVideo=e.detail});
+ window.addEventListener('workbench:video',e=>{currentVideo=e.detail;renderStatus()});
  window.addEventListener('workbench:tab',e=>{preferences.tab=e.detail.id;savePreferences();document.body.dataset.mode=e.detail.id;setText('prepareExport','輸出目前修整');if(byId('resultsDialog').open)closeDialog('resultsDialog');renderStatus()});
  function exportSummary(){
   const j=currentJob;if(!j)return;const get=k=>Number(byId('le'+k).value);const start=get('Start'),end=get('End'),count=end-start+1;

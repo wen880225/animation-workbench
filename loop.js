@@ -7,7 +7,8 @@ let previewTimer=null,previewPending=false,previewDirty=true,reference=null,refe
 let regionValue,regionEditor=null,closureValue;
 let alignmentValue,alignmentReport=null,alignmentBusy=false,alignmentEpoch=0,alignmentNotice='',alignmentError=false,alignmentStrengthSession=false;
 let shownPreview=null,previewState='pending',previewFailure='',exportChecking=false,jobSerial=0,seamSnapshot=null;
-let outputCheck=null,outputEpoch=0;
+let outputCheck=null,outputEpoch=0,jobMediaRevision=null,jobSourceAvailable=null;
+let playbackIntent=0,pendingPlayback=null;
 const workWaiters=[];
 const clone=value=>value==null?undefined:JSON.parse(JSON.stringify(value));
 const el=k=>$('le'+k),message=s=>{el('Message').textContent=s};
@@ -33,7 +34,7 @@ function renderClosure(){
  el('ClosureStatus').textContent=reason||(!c.enabled?'尚未啟用；既有方案與輸出不會改變。':`共同基準：第 ${c.reference} 幀 · 頭段 ${r.start}–${r.start+c.head_frames-1}，尾段 ${r.end-c.tail_frames+1}–${r.end}。`);
  el('ClosureStatus').dataset.error=String(c.enabled&&!!reason);el('ClosureCard').dataset.active=String(c.enabled&&!reason);
 }
-function previewRequest(){const r=values(),p=purpose(),b=Number(el('B').value),request={id:job?.id,serial:jobSerial,recipe:r,purpose:p,a:p==='tone'?b:Number(el('A').value),b,original:el('Original').checked,reference:p==='reference'?reference?.url||referenceName:''};request.signature=JSON.stringify(request);return request}
+function previewRequest(){const r=values(),p=purpose(),b=Number(el('B').value),request={id:job?.id,serial:jobSerial,sourceRevision:jobMediaRevision,recipe:r,purpose:p,a:p==='tone'?b:Number(el('A').value),b,original:el('Original').checked,reference:p==='reference'?reference?.url||referenceName:''};request.signature=JSON.stringify(request);return request}
 function freshPreview(request=previewRequest()){return images.length===2&&shownPreview?.signature===request.signature&&previewState==='fresh'}
 function renderPreviewState(single=null){
  const shown=single?seamSnapshot:shownPreview,hasImage=single||images.length===2,current=previewRequest(),stale=!!hasImage&&(!shown||shown.signature!==current.signature||(!single&&previewState!=='fresh'));
@@ -77,10 +78,11 @@ function syncTone(){for(const suffix of ['Tone','Contrast'])if(el(suffix+'Range'
 function set(r){closureValue=r.closure?cleanClosure(r,r.closure):undefined;regionValue=r.region?RegionEditor.normalize(r.region):undefined;if(JSON.stringify(alignmentValue?.model)!==JSON.stringify(r.alignment?.model))alignmentReport=null;alignmentValue=clone(r.alignment);alignmentNotice='';alignmentError=false;for(const[k,v]of Object.entries(ids)){if(k==='protect')el(v).checked=!!r[k];else el(v).value=r[k]??defaults(job)[k]}committed=values();scaleRatio=committed.sx/committed.sy;syncTone();updateTimeline();regionEditor?.sync();renderAlignment()}
 function showDraftState(restored=false){if(el('DraftState'))el('DraftState').textContent=draftWarning||(referenceName&&!reference?'草稿已保留 · 參考圖需重新選取':restored?'已恢復此任務草稿':'草稿已自動保留')}
 function snapshot(){const r=values();if(pendingBounds){for(const k of ['start','end','ramp'])r[k]=pendingBounds[k];if(pendingBounds.closure)r.closure=clone(pendingBounds.closure)}return {version:1,recipe:r,alignmentReport:clone(alignmentReport),a:pendingBounds?.a??Number(el('A').value),b:pendingBounds?.b??Number(el('B').value),purpose:purpose(),mode:el('Mode').value,zoom:el('Zoom').value,backdrop:el('Backdrop').value,split:Number(el('Split').value),original:el('Original').checked,lockRatio:el('LockRatio')?.checked===true,referenceName}}
+function emitDraft(){if(job)window.dispatchEvent(new CustomEvent('workbench:draft',{detail:{jobId:job.id,recipeSignature:JSON.stringify(values())}}))}
 function saveDraft(){
  if(!job)return;const value=snapshot();drafts.set(job.id,value);
  try{localStorage.setItem(draftPrefix+job.id,JSON.stringify(value));draftWarning=''}catch(_){draftWarning='草稿暫存在本次視窗；請儲存方案以免關閉後遺失'}
- showDraftState();
+ showDraftState();emitDraft();
 }
 function restoreDraft(j){
  let value=drafts.get(j.id);draftWarning='';
@@ -116,12 +118,12 @@ function updateTimeline(){
  for(const[suffix,first,last]of [['ClosureHeadTrack',r.start,r.start+(r.closure?.head_frames||2)-1],['ClosureTailTrack',r.end-(r.closure?.tail_frames||2)+1,r.end]]){const track=el(suffix);if(track){track.hidden=!r.closure?.enabled||!!closureRangeReason(r);track.style.left=clamp((first-1)/Math.max(1,n-1)*100,0,100)+'%';track.style.right=clamp((n-last)/Math.max(1,n-1)*100,0,100)+'%'}}
 }
 function emitFrame(){if(job)window.dispatchEvent(new CustomEvent('workbench:frame',{detail:{frame:Number(el('B').value),source:'editor',jobId:job.id}}))}
-function changeB(frame,emit=true){if(!job)return;el('B').value=Math.round(clamp(frame,1,Math.max(1,job.frames.length),1));updateTimeline();renderAlignment();saveDraft();epoch++;stop();queuePreview();if(emit)emitFrame()}
+function changeB(frame,emit=true){if(!job)return;el('B').value=Math.round(clamp(frame,1,Math.max(1,job.frames.length),1));updateTimeline();renderAlignment();saveDraft();epoch++;stop();seam=[];queuePreview();if(emit)emitFrame()}
 window.addEventListener('workbench:frame',event=>{const d=event.detail;if(!job||!d||d.source==='editor'||(d.jobId&&d.jobId!==job.id)||!Number.isFinite(d.frame))return;changeB(d.frame,false)});
 async function call(action,data={},id=job?.id){if(!id)throw Error('請先選擇任務');return api('loop/'+action,{id,...data})}
-function stop(){playing=false;clearTimeout(timer);lastSingle=null}
+function stop(){const active=playing||pendingPlayback;playbackIntent++;pendingPlayback=null;playing=false;clearTimeout(timer);lastSingle=null;if(active)el('Playback').textContent='已停止接縫播放'}
 function queuePreview(){previewDirty=true;previewState='pending';renderPreviewState(lastSingle);clearTimeout(previewTimer);if(!$('loopEditor').hidden)previewTimer=setTimeout(()=>preview(),300)}
-function finishWork(){working=false;for(const resolve of workWaiters.splice(0))resolve();if(previewPending){previewPending=false;queuePreview()}}
+function finishWork(){working=false;for(const resolve of workWaiters.splice(0))resolve();if(previewPending&&!pendingPlayback){previewPending=false;queuePreview()}}
 function invalidate(){stop();epoch++;seam=[];syncTone();updateTimeline();renderAlignment();saveDraft();draw();message('設定已變更，正在更新比對（保留上次畫面）…');el('Playback').textContent='修正已變更；接縫片段需重新準備';queuePreview()}
 function remember(changed){
  if(['Protect','Px','Py','Radius'].includes(changed)&&regionValue){regionValue=undefined;regionEditor?.deactivate(false)}
@@ -163,11 +165,11 @@ el('ToneCompare').onchange=()=>{if(el('Purpose'))el('Purpose').value='tone';upda
 el('Backdrop').onchange=()=>{saveDraft();renderCanvas()};
 el('Undo').onclick=()=>{if(history.length){set(history.pop());invalidate()}};
 el('Reset').onclick=()=>{history.push(values());const r=values();if(r.region?.outside)r.region.outside=RegionEditor.identity();set({...r,dx:0,dy:0,sx:100,sy:100,angle:0,cx:50,cy:50,protect:false});invalidate()};
-function endpoints(){el('A').value=el('Start').value;el('B').value=el('End').value;epoch++;updateTimeline();renderAlignment();saveDraft();queuePreview();emitFrame()}
+function endpoints(){stop();seam=[];el('A').value=el('Start').value;el('B').value=el('End').value;epoch++;updateTimeline();renderAlignment();saveDraft();queuePreview();emitFrame()}
 function img(src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>reject(Error('圖片載入失敗'));im.src=src})}
 async function previewAt(i,r,original,id){const result=await call('preview',{recipe:r,frame:i,original},id);if(r.closure?.enabled&&!original&&result.closure?.enabled!==true)throw Error('目前服務版本尚未支援首尾共同基準，請重新啟動工作台');return {...result,im:await img(result.image)}}
 async function preview(options={}){
- clearTimeout(previewTimer);if(!job)return false;if($('loopEditor').hidden&&options.force!==true){previewDirty=true;return false}if(!job.frames.some(f=>f.status==='done')){draw();return false}if(working){previewPending=true;return false}previewPending=false;stop();
+ clearTimeout(previewTimer);if(!job)return false;if(pendingPlayback)return false;if($('loopEditor').hidden&&options.force!==true){previewDirty=true;return false}if(!job.frames.some(f=>f.status==='done')){draw();return false}if(working){previewPending=true;return false}previewPending=false;stop();
  try{assertClosureReady()}catch(error){previewState='failed';previewFailure=error.message;renderPreviewState();message(error.message);return false}
  const request=previewRequest(),selectedPurpose=request.purpose;
  if(selectedPurpose==='reference'&&!reference){images=[];previewState='failed';previewFailure=referenceName?'請重新選取參考圖「'+referenceName+'」，完成後才能比較。':'請先選取 PNG、JPG 或 WebP 參考圖，才能與目前幀比較。';draw();message(previewFailure);return false}
@@ -183,9 +185,9 @@ async function preview(options={}){
  }catch(e){if(token===epoch){previewState='failed';previewFailure=e.message;renderPreviewState();message(e.message+'（保留上次成功畫面）')}return false}
  finally{finishWork()}
 }
-el('A').oninput=()=>{renderAlignment();saveDraft();epoch++;queuePreview()};el('B').oninput=()=>changeB(Number(el('B').value));
+el('A').oninput=()=>{stop();seam=[];renderAlignment();saveDraft();epoch++;queuePreview()};el('B').oninput=()=>changeB(Number(el('B').value));
 if(el('Timeline'))el('Timeline').oninput=()=>changeB(Number(el('Timeline').value));
-el('Preview').onclick=preview;el('Endpoints').onclick=()=>{endpoints();preview()};el('Original').onchange=()=>{invalidate();preview()};
+el('Preview').onclick=()=>{stop();epoch++;return preview()};el('Endpoints').onclick=()=>{endpoints();return preview()};el('Original').onchange=()=>{invalidate();preview()};
 function contourPixels(a,b,background){
  const out=new Uint8ClampedArray(a.length);for(let i=0;i<a.length;i+=4){const aa=a[i+3]/255,ba=b[i+3]/255,common=Math.min(aa,ba),difference=Math.min(1,Math.abs(aa-ba)*4),color=aa>ba?[255,65,85]:[30,220,255],gray=150+(a[i]+a[i+1]+a[i+2]+b[i]+b[i+1]+b[i+2])/30;for(let k=0;k<3;k++)out[i+k]=(background[i+k]*(1-common)+gray*common)*(1-difference)+color[k]*difference;out[i+3]=255}return out;
 }
@@ -256,32 +258,51 @@ el('Search').onclick=async()=>{
 };
 function displaySeam(){const f=seam[seamIndex];if(!f)return;lastSingle=f;draw(f);el('Playback').textContent=`第 ${f.frame} 幀${f.frame===values().start?' · 尾接頭':''} · ${el('Original').checked?'原始':'修正後'} · ${seamIndex+1}/${seam.length} 檢查片段`;}
 function tick(){if(!playing||!seam.length)return;displaySeam();timer=setTimeout(()=>{seamIndex=(seamIndex+1)%seam.length;tick()},1000/(fpsNumber(job.config.fps)*Number(el('Speed').value)))}
-el('Play').onclick=async()=>{
- if(working||!job)return;clearTimeout(previewTimer);previewPending=false;stop();working=true;const token=++epoch,id=job.id,r=values(),original=el('Original').checked;seam=[];seamSnapshot=previewRequest();
- try{assertClosureReady();const n=Math.min(Math.max(1,Number(el('SeamN').value)),24,Math.floor((r.end-r.start+1)/2));if(!n)throw Error('接縫檢查至少需要兩幀');const indices=[...Array.from({length:n},(_,i)=>r.end-n+1+i),...Array.from({length:n},(_,i)=>r.start+i)];
-  for(const i of indices){message(`準備接縫預覽 ${seam.length+1}/${indices.length}`);const f=await previewAt(i,r,original,id);if(token!==epoch)return;seam.push(f)}
-  message(seam.some(f=>f.clipped)?'⚠ 接縫中有幀可能超出畫布':'接縫預覽就緒');playing=true;seamIndex=0;tick();
- }catch(e){if(token===epoch)message(e.message)}finally{finishWork()}
-};
+async function playSeam(options={}){
+ if(!job){message('請先選擇任務');return false}
+ // One command owns purpose, endpoints, readiness and playback. Static refreshes
+ // cannot take over this intent; a newer edit, stop, source or play cancels it.
+ stop();epoch++;clearTimeout(previewTimer);previewPending=false;seam=[];
+ if(options.purpose==='loop'){if(purpose()!=='loop')images=[];el('Purpose').value='loop';updatePurpose()}
+ if(options.endpoints){el('A').value=el('Start').value;el('B').value=el('End').value;updateTimeline();renderAlignment();emitFrame()}
+ if(options.speed!=null)el('Speed').value=String(options.speed);
+ saveDraft();const request=previewRequest(),intent=++playbackIntent;pendingPlayback=intent;
+ const currentIntent=()=>intent===playbackIntent&&request.signature===previewRequest().signature;
+ let ownsWork=false;
+ el('Playback').textContent=working?'正在準備接縫播放，等待目前預覽結束…':'正在準備接縫播放…';message(el('Playback').textContent);
+ try{
+  while(working){await waitForWork();if(!currentIntent())return false}
+  if(!currentIntent())return false;
+  clearTimeout(previewTimer);previewPending=false;working=true;ownsWork=true;
+  const token=++epoch,{id,recipe:r,original}=request,prepared=[];
+  assertClosureReady();if(!original)assertAlignmentReady();const n=Math.min(Math.max(1,Number(el('SeamN').value)),24,Math.floor((r.end-r.start+1)/2));if(!n)throw Error('接縫檢查至少需要兩幀');
+  const indices=[...Array.from({length:n},(_,i)=>r.end-n+1+i),...Array.from({length:n},(_,i)=>r.start+i)];
+  for(const i of indices){el('Playback').textContent=`正在準備接縫播放 ${prepared.length+1}/${indices.length}…`;message(el('Playback').textContent);const f=await previewAt(i,r,original,id);if(!currentIntent()||token!==epoch)return false;prepared.push(f)}
+  seam=prepared;seamSnapshot=request;pendingPlayback=null;message(seam.some(f=>f.clipped)?'⚠ 接縫中有幀可能超出畫布':'接縫預覽就緒');playing=true;seamIndex=0;tick();return true;
+ }catch(error){if(currentIntent()){el('Playback').textContent='接縫播放準備失敗，請重試';message('接縫播放準備失敗：'+error.message)}return false}
+ finally{if(pendingPlayback===intent)pendingPlayback=null;if(ownsWork)finishWork()}
+}
+window.loopPlaySeam=playSeam;el('Play').onclick=()=>playSeam();
 el('Stop').onclick=()=>{clearTimeout(previewTimer);previewPending=false;stop();epoch++;draw();el('Playback').textContent='已停止接縫播放'};
 for(const[k,d]of [['Prev',-1],['Next',1]])el(k).onclick=()=>{stop();if(!seam.length){changeB(Number(el('B').value)+d);return}seamIndex=(seamIndex+d+seam.length)%seam.length;displaySeam()};
 el('Save').onclick=async()=>{try{assertAlignmentReady();assertClosureReady();const id=job.id,r=values();await call('save',{recipe:r},id);if(job?.id===id){saveDraft();message('修整方案已儲存至素材任務')}}catch(e){message(e.message)}};
-function exportStatus(s){
+function exportStatus(s,recipeSignature){
  const active=s.state==='running',text=active?'正在輸出「'+(s.version||'修整')+'」：'+(progressText(s.progress)||s.phase):s.state==='complete'?'✓ 修整輸出完成'+(s.elapsed?' · 共用 '+durationText(s.elapsed):''):s.state==='error'?'輸出失敗：'+s.phase:'';
  for(const id of ['editExportStatus','leExportStatus']){const node=$(id);if(node){node.hidden=!text;node.textContent=text}}
- window.workbenchExportStatus?.({...s,jobId:job?.id});
+ window.workbenchExportStatus?.({...s,jobId:job?.id,...(recipeSignature?{recipeSignature}:{})});
 }
 function recipeSummary(v){const r=v.recipe,report=v.report;if(!r)return report?`${report.frames} 幀 · ${report.fps} FPS`:'版本記錄';const signed=n=>Number(n)>0?'+'+n:String(n??0),size=r.alignment?.enabled?`局部對位 ${r.alignment.strength??100}%`:r.region?.mode==='split'?`框內 ${r.sx}% × ${r.sy}%／框外 ${r.region.outside?.sx??100}% × ${r.region.outside?.sy??100}%`:r.region?.mode==='edge'?`貼邊固定 · 中間 ${r.sx}% × ${r.sy}%`:`${r.sx}% × ${r.sy}%`;return `${r.start}–${r.end} 幀 · 明暗 ${signed(r.tone)}／對比 ${signed(r.contrast)} · ${size}`+(r.closure?.enabled?` · 共同基準 ${r.closure.reference} · 頭 ${r.closure.head_frames}／尾 ${r.closure.tail_frames} 幀`:'')}
 function versions(list){
  const id=job.id,j=job;el('Versions').replaceChildren();
  for(const v of list){const box=document.createElement('div');box.className='export-card';const label=document.createElement('strong');label.textContent=v.name;const summary=document.createElement('small');summary.textContent=recipeSummary(v)+' · '+v.phase;box.append(label,summary);
+  if(v.source_freshness&&v.source_freshness.state!=='current'){const source=document.createElement('small');source.textContent=(v.source_freshness.state==='stale'?'來源已更新':'舊版（來源未核對）')+(v.source_freshness.reason?' · '+v.source_freshness.reason:'');box.append(source)}
   if(v.recipe?.closure?.enabled){const verified=document.createElement('small'),report=v.report?.loop_closure;verified.className='closure-verification';verified.textContent=v.state!=='complete'?'尚未完成實際 PNG 核對':report?.enabled===true&&report.endpoints_equal===true&&report.max_channel_error===0&&report.changed_pixels===0?'✓ 實際輸出 PNG 已回讀：首尾像素相同。仍需播放確認動作。':report?'實際輸出 PNG 核對：首尾仍有差異，請檢查此版本。':'此版本沒有實際 PNG 核對記錄。';verified.dataset.verified=String(v.state==='complete'&&report?.enabled===true&&report.endpoints_equal===true&&report.max_channel_error===0&&report.changed_pixels===0);box.append(verified)}
   if(v.state==='complete'){const check=document.createElement('button');check.textContent='核對輸出首尾';check.onclick=()=>inspectOutput(j,v);box.append(check);const play=document.createElement('button');play.textContent='播放此版本';play.onclick=()=>window.workbenchSelectVersion?.(id,v.name);box.append(play);const a=document.createElement('a');a.className='download';a.textContent='下載透明影片';a.href=file(j,'loop_edits/'+v.name+'/loop_transparent.webm');a.download=v.name+'.webm';box.append(a)}
   const b=document.createElement('button');b.textContent='開啟此版本資料夾';b.onclick=()=>call('open',{version:v.name},id).catch(e=>message(e.message));box.append(b);el('Versions').append(box);
  }
  window.workbenchSetVersions?.(id,list);
 }
-async function load(apply=false){if(!job)return;const id=job.id;try{const result=await call('load',{},id);if(job?.id!==id)return;versions(result.versions||[]);if(apply){if(result.recipe){history.push(values());set(cleanRecipe(job,result.recipe));if(closureValue?.enabled){el('Purpose').value='loop';el('Original').checked=false;updatePurpose()}endpoints();const ref=alignmentValue?.model?.provenance?.reference;if(!closureValue?.enabled&&ref?.job_id===job.id&&Number.isInteger(ref.frame)&&ref.frame>=1&&ref.frame<=job.frames.length)el('A').value=ref.frame;invalidate();preview()}else message('尚未儲存方案')}}catch(e){if(job?.id===id)message('循環修整服務尚未載入，請重啟工作台。'+e.message)}}
+async function load(apply=false){if(!job)return;const id=job.id,serial=jobSerial;try{const result=await call('load',{},id);if(job?.id!==id||jobSerial!==serial)return;versions(result.versions||[]);if(apply){if(result.recipe){history.push(values());set(cleanRecipe(job,result.recipe));if(closureValue?.enabled){el('Purpose').value='loop';el('Original').checked=false;updatePurpose()}endpoints();const ref=alignmentValue?.model?.provenance?.reference;if(!closureValue?.enabled&&ref?.job_id===job.id&&Number.isInteger(ref.frame)&&ref.frame>=1&&ref.frame<=job.frames.length)el('A').value=ref.frame;invalidate();preview()}else message('尚未儲存方案')}}catch(e){if(job?.id===id&&jobSerial===serial)message('循環修整服務尚未載入，請重啟工作台。'+e.message)}}
 el('Load').onclick=()=>load(true);
 el('Export').onclick=async()=>{
  if(!job||exportChecking||exporting)return;const id=job.id,serial=jobSerial;exportChecking=true;el('Export').disabled=true;
@@ -292,16 +313,17 @@ el('Export').onclick=async()=>{
   if(request.signature!==previewRequest().signature)throw Error('等待預覽期間設定或素材已變更，本次未輸出；請重新檢查後輸出。');
   if(!freshPreview(request)&&!await preview({force:true}))throw Error('預覽未更新成功，本次未輸出。'+(previewFailure?' '+previewFailure:''));
   if(request.signature!==previewRequest().signature||!freshPreview(request))throw Error('預覽期間設定或素材已變更，本次未輸出；請重新檢查後輸出。');
-  assertAlignmentReady();assertClosureReady();const result=await call('export',{recipe:request.recipe},id);if(job?.id!==id||jobSerial!==serial)return;exporting=true;exportStatus(result);message(result.phase);
+  assertAlignmentReady();assertClosureReady();const result=await call('export',{recipe:request.recipe},id);if(job?.id!==id||jobSerial!==serial)return;exporting=true;exportStatus(result,JSON.stringify(request.recipe));message(result.phase);
  }catch(e){if(job?.id===id&&jobSerial===serial)message(e.message)}finally{exportChecking=false;if(job)el('Export').disabled=exporting||job.state==='running'||job.frames.length<2}
 };
 window.loopRefresh=j=>{
- const previous=job,changedJob=job?.id!==j.id,previousCount=changedJob?0:job.frames.length;
+ const previous=job,changedJob=job?.id!==j.id,previousCount=changedJob?0:job.frames.length,mediaRevision=j.media_revision??null,changedSource=!changedJob&&jobMediaRevision!==mediaRevision,sourceAvailable=j.frames.length>0&&j.frames.every(f=>f.status==='done'),changedAvailability=!changedJob&&jobSourceAvailable!==sourceAvailable;jobMediaRevision=mediaRevision;jobSourceAvailable=sourceAvailable;
  if(job?.id!==j.id){
   if(el('OutputDialog').open)closeOutputCheck();else{outputEpoch++;outputCheck=null}
   if(job)saveDraft();jobSerial++;alignmentEpoch++;alignmentBusy=false;alignmentNotice='';alignmentError=false;regionEditor?.deactivate(false);job=j;clearTimeout(previewTimer);previewPending=false;previewDirty=true;previewState='pending';shownPreview=null;previewFailure='';stop();epoch++;images=[];seam=[];history=[];pickTarget=null;restoreDraft(j);el('Candidates').replaceChildren();exporting=false;el('Export').disabled=exportChecking||j.frames.length<2;load();draw();if(!$('loopEditor').hidden&&j.frames.length>1)queuePreview();
  }else{
   job=j;
+  if(changedSource||changedAvailability){jobSerial++;alignmentEpoch++;alignmentBusy=false;stop();epoch++;seam=[];clearTimeout(previewTimer);previewPending=false;previewDirty=true;previewState='pending';previewFailure='';draw();el('Playback').textContent=sourceAvailable?'來源影格已更新；請重新檢查接縫':'來源影格待處理；請完成處理後重新檢查接縫';load();if(sourceAvailable)queuePreview()}
   if(previousCount===0&&j.frames.length>0){
    const old=values(),bounds=pendingBounds;
    if(bounds){const restored=cleanRecipe(j,{...old,...bounds});pendingBounds=null;set(restored);el('A').value=Math.round(clamp(bounds.a,1,j.frames.length,restored.start));el('B').value=Math.round(clamp(bounds.b,1,j.frames.length,restored.end))}
@@ -311,7 +333,7 @@ window.loopRefresh=j=>{
  }
  el('Export').disabled=exportChecking||exporting||j.state==='running'||j.frames.length<2;
  if(!changedJob&&previewDirty&&j.state!=='running'&&j.frames.some(f=>f.status==='done')&&(previous?.state==='running'||previousCount===0||!previous?.frames.some(f=>f.status==='done')))queuePreview();
- updateTimeline();renderAlignment();
+ updateTimeline();renderAlignment();if(changedJob)emitDraft();
  if(!polling){polling=true;const id=j.id;call('status',{},id).then(s=>{if(job?.id!==id)return;exportStatus(s);if(s.state==='running'){exporting=true;el('Export').disabled=true}else if(exporting){exporting=false;el('Export').disabled=exportChecking||job.state==='running'||job.frames.length<2;message(s.phase);load()}}).catch(()=>{}).finally(()=>polling=false)}
 };
 window.loopTabShown=()=>{draw();if((previewDirty||!images.length)&&job?.frames.length>1)preview()};
@@ -325,6 +347,6 @@ if(window.RegionEditor&&el('RegionControls'))regionEditor=new RegionEditor({
  onChange:(r,transform)=>{regionValue=r;if(transform){for(const[k,v]of Object.entries(transform))el(ids[k]).value=v;scaleRatio=transform.sx/transform.sy}committed=values();invalidate()},
  onSync:r=>{if(el('TransformHeading'))el('TransformHeading').textContent=r?.mode==='edge'?'中間修整（向所選邊緣漸退）':r?.mode==='split'?'框內變形':r?.mode==='inside'?'框內變形（框外不變）':r?.mode==='outside'?'框外變形（框內不變）':'整體變形';if(el('PickCenter'))el('PickCenter').textContent=r?.mode==='split'?'在畫布上選框內變形中心':'在畫布上選變形中心'},onDraw:()=>draw()
 });
-window.addEventListener('workbench:tab',()=>{if($('loopEditor').hidden)regionEditor?.deactivate(false)});
+window.addEventListener('workbench:tab',()=>{if($('loopEditor').hidden){regionEditor?.deactivate(false);stop();epoch++;clearTimeout(previewTimer);previewPending=false}});
 if(current())window.loopRefresh(current());
 })();

@@ -106,19 +106,21 @@ class Handler(BaseHTTPRequestHandler):
             if p.path=='/app.js': return self.send((e.ROOT/'app.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/workspace.js': return self.send((e.ROOT/'workspace.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/workspace.css': return self.send((e.ROOT/'workspace.css').read_bytes(),mime='text/css; charset=utf-8')
+            if p.path=='/seam_repair.js': return self.send((e.ROOT/'seam_repair.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/transitions.js': return self.send((e.ROOT/'transitions.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/transitions.css': return self.send((e.ROOT/'transitions.css').read_bytes(),mime='text/css; charset=utf-8')
             if p.path=='/beginner.js': return self.send((e.ROOT/'beginner.js').read_bytes(),mime='text/javascript; charset=utf-8')
+            if p.path=='/boundary_workspace.js': return self.send((e.ROOT/'boundary_workspace.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/beginner.css': return self.send((e.ROOT/'beginner.css').read_bytes(),mime='text/css; charset=utf-8')
             if p.path=='/queue.js': return self.send((e.ROOT/'queue.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/region.js': return self.send((e.ROOT/'region.js').read_bytes(),mime='text/javascript; charset=utf-8')
             if p.path=='/region.css': return self.send((e.ROOT/'region.css').read_bytes(),mime='text/css; charset=utf-8')
-            if p.path=='/api/version': return self.send({'version':'3.9','workspace':3,'features':{'transitions':1,'transition_tone':1,'transition_sequence':2,'transition_seams':1,'queue':1,'region':3,'alignment':1,'closure':1}})
+            if p.path=='/api/version': return self.send({'version':'3.12.0','workspace':3,'features':{'transitions':1,'transition_tone':1,'transition_sequence':2,'transition_seams':2,'boundary_routes':1,'finish_plan':3,'candidate_playback':1,'seam_repair':2,'queue':1,'region':3,'alignment':1,'closure':1}})
             if p.path=='/api/queue': return self.send(qm.status())
             if p.path=='/api/jobs':
                 jobs=[json.loads(x.read_text(encoding='utf-8')) for x in e.JOBS.glob('*/job.json')]
                 jobs=[j for j in jobs if not j.get('is_test')]
-                return self.send(sorted(jobs,key=lambda j:j['created'],reverse=True))
+                return self.send([e.public_job(j) for j in sorted(jobs,key=lambda j:j['created'],reverse=True)])
             if p.path=='/api/check': return self.send(e.preflight(q.get('url',['http://127.0.0.1:8188'])[0]))
             if p.path.startswith('/transition-file/'):
                 parts=p.path.split('/');root=tr.projectdir(parts[2]).resolve()
@@ -207,7 +209,8 @@ class Handler(BaseHTTPRequestHandler):
                     ids=[v[1] for key in ('queue_running','queue_pending') for v in queue.get(key,[])]
                     if f.get('prompt_id') in ids: raise ValueError('該幀仍在 ComfyUI 執行，請稍後繼續')
                     e.change_frame(jid,idx,status='pending',prompt_id=None,error='')
-                    e.update(jid,approved=False,state='paused',exports=[],retry_index=idx,phase='準備重跑指定幀')
+                    e.invalidate_exports(jid,'已要求重跑來源影格；此為先前輸出，完成後請重新合成')
+                    e.update(jid,approved=False,state='paused',retry_index=idx,phase='準備重跑指定幀')
                     e.start(jid,'single')
                 elif p.path=='/api/atlas': e.spritesheet(jid)
                 elif p.path=='/api/open':

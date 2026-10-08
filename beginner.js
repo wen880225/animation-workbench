@@ -9,12 +9,12 @@
  const guide={
   start:['第一次使用','先開啟 ComfyUI，再匯入影片。可以一次選多支，讓任務隊列依序去背。'],
   playback:['檢查播放','先看正常速度，再用 0.1× 看接縫。想查某一張的去背邊緣，切到「逐幀檢查」。'],
-  single:['修整一段動畫','選「明暗與參考」調亮暗；選「首尾循環」讓結尾接回開頭。先慢播檢查，再按「輸出目前修整」。'],
-  multi:['串接多段表情','依畫面上的四個步驟操作。明暗已一致時可直接到下一步；細部變形放在「進階微調」。']
+  single:['修好首尾循環','在素材檢查按「以目前素材建立修整」。接點修整會把這段的結尾與開頭放在一起檢查。'],
+  multi:['接好多段動畫','在「接點修整」加入已去背的素材，安排順序，再分析接點。單段與多段使用相同的預覽與輸出流程。']
  };
  function openGuide(topic='start'){const item=guide[topic]||guide.start;text('guideContextTitle',item[0]);text('guideContextText',item[1]);for(const d of document.querySelectorAll('dialog[open]'))if(d.id!=='guideDialog')d.close();if(!$('guideDialog').open)$('guideDialog').showModal()}
  $('openGuide').addEventListener('click',()=>openGuide());for(const b of document.querySelectorAll('[data-guide]'))b.addEventListener('click',()=>openGuide(b.dataset.guide));
- for(const b of document.querySelectorAll('[data-guide-route]'))b.addEventListener('click',()=>{$('guideDialog').close();if(b.dataset.guideRoute==='import')window.workbenchOpenImports?.();else{if(document.body.classList.contains('focus-canvas'))$('focusCanvas').click();const single=b.dataset.guideRoute==='single',tab=single?'tabEdit':'tabTransitions';window.workbenchSelectTab?.(tab);if(single)$(tab).focus();else window.workbenchTransitionStep?.('sources')}});
+ for(const b of document.querySelectorAll('[data-guide-route]'))b.addEventListener('click',()=>{$('guideDialog').close();if(b.dataset.guideRoute==='import')window.workbenchOpenImports?.();else{if(document.body.classList.contains('focus-canvas'))$('focusCanvas').click();if(b.dataset.guideRoute==='single')window.boundaryOpenCurrent?.();else{window.workbenchSelectTab?.('tabTransitions');window.workbenchTransitionStep?.('sources')}}});
  $('welcomeImport').onclick=()=>window.workbenchOpenImports?.();$('welcomeTasks').onclick=()=>$('openTasks').click();
  function updateWelcome(job){const empty=!job;$('playbackPanel').dataset.empty=String(empty);$('welcomePanel').hidden=!empty}
  window.addEventListener('workbench:job',e=>updateWelcome(e.detail));
@@ -27,7 +27,7 @@
  function changePurpose(p){if($('lePurpose').value!==p){$('lePurpose').value=p;$('lePurpose').dispatchEvent(new Event('change',{bubbles:true}))}if(p==='loop'&&!$('leEndpoints').disabled)$('leEndpoints').click();syncSingle();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}
  for(const b of document.querySelectorAll('[data-single-mode]'))b.addEventListener('click',()=>changePurpose(b.dataset.singleMode));
  $('singleUseReference').onclick=()=>{changePurpose('reference');$('leReference').focus()};$('singleBeforeAfter').onclick=()=>{changePurpose('tone');$('leTone').focus()};
- $('singleSlowPreview').onclick=()=>{changePurpose('loop');$('leSpeed').value='0.1';$('leSpeed').dispatchEvent(new Event('change',{bubbles:true}));$('lePlay').click()};
+ $('singleSlowPreview').onclick=()=>{const command=window.loopPlaySeam?.({purpose:'loop',endpoints:true,speed:0.1});syncSingle();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')));return command};
  $('singleShowApplied').onclick=()=>{changePurpose('loop');if(advancedSummary().length){$('singleAdvanced').open=true;$('singleAdvanced').scrollIntoView({block:'nearest'});$('singleAdvanced').querySelector('summary').focus()}else{$('leClosureCard').scrollIntoView({block:'nearest'});$('leClosureEnabled').focus()}};
  function advancedSummary(){
   const result=[],number=id=>Number($(id)?.value||0);

@@ -31,3 +31,9 @@ __pycache__/
 htmlcov/
 .DS_Store
 Thumbs.db
+
+# Local seam inference runtime
+/.rife-venv/
+/models/
+/repair_runtime.json
+*.pkl

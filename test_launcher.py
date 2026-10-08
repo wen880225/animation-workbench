@@ -1,4 +1,5 @@
 """Restart safety regressions use synthetic metadata and mocked processes only."""
+import ast
 import contextlib
 import io
 import json
@@ -46,6 +47,25 @@ class LauncherTests(unittest.TestCase):
     def reasons(self):
         with patch.object(lr, 'request_json', side_effect=self.api):
             return lr.idle_reasons(self.root, 'http://127.0.0.1:8772', 'synthetic')
+
+    def test_packaged_server_version_and_repair_assets_are_ready(self):
+        # Read the actual packaged API contract without importing server or user jobs.
+        tree = ast.parse((Path(launcher.__file__).parent / 'server.py').read_text(encoding='utf-8'))
+        info = next(ast.literal_eval(node) for node in ast.walk(tree)
+                    if isinstance(node, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == 'workspace' for k in node.keys))
+        self.assertEqual(launcher.EXPECTED_VERSION, info['version'])
+        seen = []
+        def response(url, **kwargs):
+            seen.append(url)
+            value = info if url.endswith('/api/version') else [] if url.endswith('/api/jobs') else self.queue if url.endswith('/api/queue') else None
+            data = json.dumps(value).encode() if value is not None else b"window.APP_TOKEN='synthetic'; loop.js loopRefresh"
+            return io.BytesIO(data)
+        with patch.object(launcher.urllib.request, 'urlopen', side_effect=response):
+            self.assertTrue(launcher.ready())
+        self.assertIn(launcher.URL + '/seam_repair.js', seen)
+        info['features'].pop('seam_repair')
+        with patch.object(launcher.urllib.request, 'urlopen', side_effect=response):
+            self.assertFalse(launcher.ready(), 'incomplete repair capability must not pass readiness')
 
     def test_current_service_reused_without_stop_or_spawn(self):
         with patch.object(launcher, 'ready', return_value=True), patch.object(lr, 'port_open', return_value=True), patch.object(lr, 'restart_existing') as stop, patch.object(launcher.subprocess, 'Popen') as spawn, patch.object(launcher.webbrowser, 'open') as browser, contextlib.redirect_stdout(io.StringIO()):

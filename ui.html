@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title>動畫去背工作台</title>
-  <link rel="stylesheet" href="/workspace.css?v=39">
-  <link rel="stylesheet" href="/transitions.css?v=39">
-  <link rel="stylesheet" href="/region.css?v=39">
-  <link rel="stylesheet" href="/beginner.css?v=39-preview-1">
+  <link rel="stylesheet" href="/workspace.css?v=3120">
+  <link rel="stylesheet" href="/transitions.css?v=3120">
+  <link rel="stylesheet" href="/region.css?v=3120">
+  <link rel="stylesheet" href="/beginner.css?v=3120">
 </head>
-<body>
+<body data-boundary-mode="materials">
 <div class="app-shell">
   <header class="app-header">
     <button id="openImport" class="primary import-entry" aria-haspopup="dialog" aria-controls="taskDrawer"><span aria-hidden="true">＋</span> 匯入影片</button>
@@ -30,18 +30,21 @@
   </div>
   <nav class="workspace-nav" aria-label="工作模式">
     <div class="work-tabs" role="tablist" aria-label="工作區">
-      <button id="tabPlayback" role="tab" aria-controls="playbackPanel" aria-selected="true">播放檢查</button>
-      <button id="tabFrames" role="tab" aria-controls="framesPanel" aria-selected="false" tabindex="-1">逐幀檢查</button>
-      <button id="tabEdit" role="tab" aria-controls="loopEditor" aria-selected="false" tabindex="-1">單段修整</button>
-      <button id="tabTransitions" role="tab" aria-controls="transitionPanel" aria-selected="false" tabindex="-1">多段銜接</button>
+      <button id="tabMaterials" role="tab" aria-controls="playbackPanel framesPanel" aria-selected="true">素材檢查</button>
+      <button id="tabTransitions" role="tab" aria-controls="transitionPanel" aria-selected="false" tabindex="-1">接點修整</button>
+      <button id="tabPlayback" role="tab" aria-controls="playbackPanel" aria-selected="true" tabindex="-1" hidden>播放檢查</button>
+      <button id="tabFrames" role="tab" aria-controls="framesPanel" aria-selected="false" tabindex="-1" hidden>逐幀檢查</button>
+      <button id="tabEdit" role="tab" aria-controls="loopEditor" aria-selected="false" tabindex="-1" hidden>舊版單段方案</button>
     </div>
-    <div class="nav-actions"><span id="leDraftState" class="hint" role="status">修整草稿依素材保留</span>
+    <div id="qaModes" class="qa-modes" role="group" aria-label="素材檢查方式"><button id="qaPlayback" aria-pressed="true">播放</button><button id="qaFrames" aria-pressed="false">逐幀</button></div>
+    <div class="nav-actions"><button id="boundaryStartCurrent" class="primary" disabled>以目前素材建立修整</button><span id="leDraftState" class="hint" role="status">修整草稿依素材保留</span>
+    <details id="compatibilityMenu" class="compatibility-menu"><summary>進階</summary><div><button id="openLegacySingle" disabled>舊版單段方案</button></div></details>
     <button id="focusCanvas" class="quiet" aria-pressed="false">專注檢查</button></div>
   </nav>
   <main class="workspace">
     <section id="playbackPanel" class="workspace-panel" role="tabpanel" aria-labelledby="tabPlayback">
       <div class="stage-column">
-        <div class="stage-heading"><div><span class="eyebrow">檢查成品</span><h2>先看看動畫播起來如何</h2></div><button class="text-action" data-guide="playback">怎麼檢查？</button></div>
+        <div class="stage-heading"><div><span class="eyebrow">去背結果</span><h2>檢查素材，再修好接點</h2></div><button class="text-action" data-guide="playback">怎麼檢查？</button></div>
         <section id="welcomePanel" class="welcome-sheet" hidden>
           <span class="eyebrow">從第一支影片開始</span><h2>把影片做成<br>可用的遊戲動畫。</h2><p>先去背，再修整，最後輸出透明素材。</p>
           <div class="welcome-route"><div><b>01</b><strong>匯入與去背</strong></div><span aria-hidden="true">→</span><div><b>02</b><strong>檢查與修整</strong></div><span aria-hidden="true">→</span><div><b>03</b><strong>預覽與輸出</strong></div></div>
@@ -105,9 +108,9 @@
           <div id="compareTools" class="compare-tools view-controls"><label for="compareSplit">分隔線</label><input id="compareSplit" type="range" min="0" max="100" value="50"><button id="compareCenter" class="quiet">置中</button><span class="hint">雙擊切換放大 · 放大後可捲動檢查</span></div>
         </div>
         <div class="filmstrip">
-          <div class="timeline-header"><button id="prevPage" class="quiet">← 前 12 幀</button><span id="pageInfo" class="hint"></span><button id="nextPage" class="quiet">後 12 幀 →</button><label for="jump">跳到第</label><input id="jump" type="number" min="1" value="1"><button id="jumpGo" class="quiet">查看</button></div>
-          <div id="cards" class="cards" aria-label="影格縮圖"></div><input id="scrub" type="range" min="1" max="1" value="1" aria-label="逐幀時間軸">
-          <div class="transport"><button id="prevFrame" class="quiet">← 上一幀</button><button id="nextFrame" class="quiet">下一幀 →</button><p id="warnings" class="hint" role="status"></p></div>
+          <div class="transport"><button id="prevFrame" class="quiet">← 上一幀</button><button id="nextFrame" class="quiet">下一幀 →</button><label for="jump">第</label><input id="jump" type="number" min="1" value="1"><button id="jumpGo" class="quiet">查看</button><p id="warnings" class="hint" role="status"></p></div>
+          <input id="scrub" type="range" min="1" max="1" value="1" aria-label="逐幀時間軸">
+          <details class="frame-thumbnails"><summary>查看影格縮圖</summary><div class="timeline-header"><button id="prevPage" class="quiet">← 前 12 幀</button><span id="pageInfo" class="hint"></span><button id="nextPage" class="quiet">後 12 幀 →</button></div><div id="cards" class="cards" aria-label="影格縮圖"></div></details>
         </div>
       </div>
       <aside class="inspector" aria-label="逐幀檢查設定">
@@ -120,7 +123,8 @@
 
     <section id="loopEditor" class="workspace-panel" role="tabpanel" aria-labelledby="tabEdit" hidden>
       <div class="stage-column editor-preview">
-        <div class="stage-heading"><div><span class="eyebrow">目前草稿</span><h2 id="singleStageTitle">調整這段動畫的明暗</h2></div><button class="text-action" data-guide="single">操作說明</button></div>
+        <p class="legacy-context" role="status">舊版單段方案相容模式；新修整請使用「接點修整」。</p>
+        <div class="stage-heading"><div><span class="eyebrow">目前草稿</span><h2 id="singleStageTitle" tabindex="-1">調整這段動畫的明暗</h2></div><button class="text-action" data-guide="single">操作說明</button></div>
         <div class="canvas-toolbar"><label for="lePurpose">比較用途</label><select id="lePurpose"><option value="tone">調整前後</option><option value="loop">首尾銜接</option><option value="reference">參考圖與目前幀</option></select><label for="leMode">比對方式</label><select id="leMode"><option value="wipe">拖曳比對</option><option value="onion">半透明疊圖（混合顯示）</option><option value="contour">輪廓差異（紅 A／青 B）</option><option value="diff">差異 ×4</option></select><button id="lePreview" class="quiet">更新比對</button></div>
         <div class="source-labels"><span id="leSourceA">左側 · 等待載入</span><span id="leSourceB">右側 · 等待載入</span></div>
         <details class="preview-meta"><summary>畫面來源與比對說明</summary><p id="lePreviewSnapshot" class="preview-snapshot">畫面來源：尚無成功預覽</p><p id="leModeHint" class="comparison-mode-hint">左側 A、右側 B；拖曳分隔線查看各自的實際畫面。</p></details>
@@ -184,7 +188,7 @@
   </main>
   <footer class="workspace-status">
     <button id="statusDetails" class="quiet" aria-haspopup="dialog" aria-controls="resultsDialog"><span id="globalStatus">尚未選擇任務</span></button>
-    <progress id="globalProgress" value="0" max="1" aria-label="目前任務進度"></progress><span id="globalEta" class="hint" role="status"></span><span id="queueMini" class="hint" role="status"></span><span id="versionTag" class="hint">動畫去背工作台 v3.9</span>
+    <progress id="globalProgress" value="0" max="1" aria-label="目前任務進度"></progress><span id="globalEta" class="hint" role="status"></span><span id="queueMini" class="hint" role="status"></span><span id="versionTag" class="hint">動畫去背工作台 v3.12.0</span>
   </footer>
 </div>
 
@@ -255,8 +259,8 @@
   <div class="dialog-heading"><div><span class="eyebrow">快速指南</span><h2 id="guideTitle">先選你想完成的事</h2></div><button data-close="guideDialog">關閉</button></div>
   <div class="guide-choices">
     <button data-guide-route="import"><b>01</b><span><strong>把影片去背</strong><small>匯入影片 → 加入隊列 → 檢查結果</small></span><span aria-hidden="true">→</span></button>
-    <button data-guide-route="single"><b>02</b><span><strong>修整一段動畫</strong><small>調明暗或修首尾 → 慢播確認 → 輸出</small></span><span aria-hidden="true">→</span></button>
-    <button data-guide-route="multi"><b>03</b><span><strong>串接多段表情</strong><small>排順序 → 統一明暗 → 修接點 → 輸出</small></span><span aria-hidden="true">→</span></button>
+    <button data-guide-route="single"><b>02</b><span><strong>修好目前素材的循環</strong><small>建立修整 → 分析首尾 → 預覽與輸出</small></span><span aria-hidden="true">→</span></button>
+    <button data-guide-route="multi"><b>03</b><span><strong>接好多段動畫</strong><small>加入素材 → 排順序 → 分析接點 → 輸出</small></span><span aria-hidden="true">→</span></button>
   </div>
   <section class="guide-context"><h3 id="guideContextTitle">第一次使用</h3><p id="guideContextText">先開啟 ComfyUI，再匯入影片。可以一次選多支，讓任務隊列依序去背。</p></section>
   <details class="guide-glossary"><summary>幀、接點、過渡，是什麼？</summary><dl><dt>幀</dt><dd>動畫裡的一張圖片。</dd><dt>接點</dt><dd>上一段最後一張，與下一段第一張相接的位置。</dd><dt>過渡</dt><dd>用幾張圖片，把原本的動作逐漸調到接點。</dd><dt>方案／成品</dt><dd>方案保存修整設定；輸出後的 PNG 與影片才是成品。</dd></dl></details>
@@ -266,13 +270,15 @@
 
 <div id="toast" role="alert" hidden></div>
 <script>window.APP_TOKEN='__TOKEN__';</script>
-<script src="/workspace.js?v=39"></script>
-<script src="/app.js?v=39"></script>
-<script src="/queue.js?v=39"></script>
-<script src="/region.js?v=39"></script>
-<script src="/loop.js?v=39"></script>
-<script src="/transitions.js?v=39"></script>
-<script src="/beginner.js?v=39-preview-1"></script>
+<script src="/workspace.js?v=3120"></script>
+<script src="/app.js?v=3120"></script>
+<script src="/queue.js?v=3120"></script>
+<script src="/region.js?v=3120"></script>
+<script src="/loop.js?v=3120"></script>
+<script src="/transitions.js?v=3120"></script>
+<script src="/seam_repair.js?v=3120"></script>
+<script src="/boundary_workspace.js?v=3120"></script>
+<script src="/beginner.js?v=3120"></script>
 
 </body>
 </html>

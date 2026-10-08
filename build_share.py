@@ -1,4 +1,4 @@
-"""Build a clean v3.9 source ZIP from an explicit allowlist.
+"""Build a clean v3.12.0 source ZIP from an explicit allowlist.
 
 Run with Python 3.12 from any working directory. --check validates the complete
 archive in memory without writing it. Existing packages are never overwritten.
@@ -18,22 +18,50 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parent
-PACKAGE = "AnimationWorkbench_v3.9_source"
+PACKAGE = "AnimationWorkbench_v3.12.0_source"
 OUTPUT_DIR = ROOT / "分享套件"
 SOURCE_FILES = (
+    "scale_stability.py", "test_scale_stability.py", "docs/v3.12-stability.zh-TW.md", "docs/images/scale-stability-312.jpg",
+    "seam_repair.py", "seam_repair_core.py", "seam_repair.js",
+    "rife_network.py", "rife_warp.py", "RIFE_LICENSE.txt", "setup_seam_model.py",
+    "test_seam_repair.py", "test_seam_repair_ui.cjs", "docs/v3.11-repair.zh-TW.md", "docs/images/seam-repair-311.jpg",
     ".gitignore",
     "LICENSE",
+    "CONTRIBUTORS.md",
+    "docs/model-setup.zh-TW.md",
     "README.md",
     "CHANGELOG.md",
     "THIRD_PARTY.md",
     "docs/getting-started.zh-TW.md",
+    "docs/v3.10-validation.zh-TW.md",
+    "docs/v3.10.1-validation.zh-TW.md",
+    "docs/v3.10.2-validation.zh-TW.md",
+    "docs/v3.10.3-validation.zh-TW.md",
     "docs/similar-tools.zh-TW.md",
     "docs/images/workbench.jpg",
     "docs/images/preview-100.jpg",
+    "docs/images/registration-candidate.jpg",
+    "docs/images/local-candidate.jpg",
+    "docs/images/candidate-playback.jpg",
     "workspace.css",
     "workspace.js",
     "beginner.css",
     "beginner.js",
+    "boundary_workspace.js",
+    "finish_plan.py",
+    "test_finish_plan.py",
+    "test_finish_alignment.py",
+    "test_finish_registration_review.py",
+    "test_finish_local_alignment.py",
+    "test_finish_local_review.py",
+    "test_candidate_playback.py",
+    "test_boundary_routes.py",
+    "test_boundary_ui.cjs",
+    "test_boundary_editor.cjs",
+    "test_p0_artifact_state.py",
+    "test_p0_media_state.cjs",
+    "test_p0_single_playback.cjs",
+    "test_p0_transition_state.cjs",
     "ui.html",
     "app.js",
     "loop.js",
@@ -150,7 +178,7 @@ def validate_payload(payload: dict[str, bytes]) -> None:
             raise ValueError(f"分享檔名含私人／執行期目錄：{name}")
         if path.suffix.casefold() in {".log", ".pyc", ".exe", ".dll"}:
             raise ValueError(f"分享包不包含此類檔案：{name}")
-        if name in {"docs/images/workbench.jpg", "docs/images/preview-100.jpg"}:
+        if name in {"docs/images/scale-stability-312.jpg", "docs/images/workbench.jpg", "docs/images/preview-100.jpg", "docs/images/registration-candidate.jpg", "docs/images/local-candidate.jpg", "docs/images/candidate-playback.jpg", "docs/images/seam-repair-311.jpg"}:
             if not data.startswith(b"\xff\xd8\xff"):
                 raise ValueError(f"教學截圖不是有效的 JPEG 格式：{name}")
             continue

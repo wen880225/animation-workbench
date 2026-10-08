@@ -33,7 +33,7 @@ const prefix='animation-workbench:draft:v1:';
  h.$('leTone').value='20';h.$('leTone').oninput();assert.equal(h.$('leToneRange').value,'20');
  h.$('leA').value='2';h.$('leA').oninput();h.$('leTimeline').value='3';h.$('leTimeline').oninput();assert.equal(Number(h.$('leB').value),3);assert.equal(Number(h.$('leA').value),2);
  assert.equal(h.emitted.at(-1).detail.source,'editor');assert.equal(h.emitted.at(-1).detail.frame,3);
- const before=h.emitted.length;h.window.dispatchEvent({type:'workbench:frame',detail:{frame:2,source:'frames'}});assert.equal(h.emitted.length,before+1);assert.equal(Number(h.$('leB').value),2);assert.equal(Number(h.$('leA').value),2);
+ const before=h.emitted.filter(event=>event.type==='workbench:frame').length;h.window.dispatchEvent({type:'workbench:frame',detail:{frame:2,source:'frames'}});assert.equal(h.emitted.filter(event=>event.type==='workbench:frame').length,before+1);assert.equal(Number(h.$('leB').value),2);assert.equal(Number(h.$('leA').value),2);
  h.$('leReference').files=[{name:'source.png'}];await h.$('leReference').onchange();await h.flush();assert.equal(h.$('lePurpose').value,'reference');assert.match(h.$('leSourceA').textContent,/source.png/);
  h.window.loopRefresh(b);await h.flush();assert.equal(h.$('lePurpose').value,'tone');assert.equal(h.$('leReferenceName').textContent,'尚未選取參考圖');assert.equal(Number(h.$('leTone').value),0);
  h.window.loopRefresh(a);await h.flush();assert.equal(Number(h.$('leTone').value),20);assert.equal(h.$('lePurpose').value,'reference');assert.equal(h.$('leReferenceName').textContent,'source.png');
